@@ -1,5 +1,6 @@
 from database import SessionLocal, SettingsRepository
 from config import settings
+from utils import logger
 from typing import Optional
 
 
@@ -48,18 +49,18 @@ class SettingsService:
 
         # Проверяем и инициализируем секретный код
         if not settings_repo.exists("security_code"):
-            print("⚙️  Инициализация секретного кода из .env...")
+            logger.info("Initializing security code from .env...")
             settings_repo.set_value("security_code", settings.security_code)
-            print("✅ Секретный код сохранен в БД")
+            logger.info("Security code saved to database")
         else:
-            print("✅ Секретный код уже есть в БД")
+            logger.info("Security code already exists in database")
 
         # Проверяем первого админа из .env
         super_admin_id = settings.admin_id
         existing_admin = user_repo.get_by_telegram_id(super_admin_id)
 
         if not existing_admin:
-            print(f"⚙️  Создание первого админа из .env (ID: {super_admin_id})...")
+            logger.info(f"Creating first admin from .env (ID: {super_admin_id})...")
             # Создаем первого админа
             user_repo.create_user(
                 telegram_id=super_admin_id,
@@ -71,14 +72,14 @@ class SettingsService:
             created_user = user_repo.get_by_telegram_id(super_admin_id)
             user_repo.set_admin(created_user, is_admin=True)
             user_repo.verify_user(created_user)
-            print(f"✅ Первый админ создан в БД (ID: {super_admin_id})")
+            logger.info(f"First admin created in database (ID: {super_admin_id})")
         else:
             if not existing_admin.is_admin:
-                print(f"⚙️  Назначение админских прав пользователю из .env (ID: {super_admin_id})...")
+                logger.info(f"Assigning admin rights to user from .env (ID: {super_admin_id})...")
                 user_repo.set_admin(existing_admin, is_admin=True)
-                print(f"✅ Админские права назначены (ID: {super_admin_id})")
+                logger.info(f"Admin rights assigned (ID: {super_admin_id})")
             else:
-                print(f"✅ Пользователь из .env уже является админом (ID: {super_admin_id})")
+                logger.info(f"User from .env is already an admin (ID: {super_admin_id})")
 
         db.close()
 

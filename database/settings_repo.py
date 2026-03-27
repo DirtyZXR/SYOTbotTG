@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from models.user import Settings
+from models import Settings
 from typing import Optional
 
 

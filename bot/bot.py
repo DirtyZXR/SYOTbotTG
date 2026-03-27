@@ -30,6 +30,7 @@ from bot.keyboards import (
 )
 from bot.states import RegistrationForm, FileBrowserState, AdminState
 from database import init_db
+from utils import logger
 
 # Инициализация бота
 bot = Bot(
@@ -53,7 +54,7 @@ async def cmd_start(message: Message, state: FSMContext):
         await message.answer(
             "👋 Добро пожаловать!\n\n"
             "Выберите действие:",
-            reply_markup=get_main_menu_keyboard(),
+            reply_markup=get_main_menu_keyboard(user_id),
         )
     else:
         # Начинаем пошаговую регистрацию
@@ -251,7 +252,7 @@ async def process_code(message: Message, state: FSMContext):
             f"✅ {msg}\n\n"
             "👋 Добро пожаловать!\n\n"
             "Выберите действие:",
-            reply_markup=get_main_menu_keyboard(),
+            reply_markup=get_main_menu_keyboard(message.from_user.id),
         )
     else:
         await message.answer(f"❌ {msg}\n\nПопробуйте ещё раз или нажмите \"Отмена\"")
@@ -296,7 +297,7 @@ async def go_back_to_main_menu(callback: CallbackQuery, state: FSMContext):
 
     await callback.message.edit_text(
         "Выберите действие:",
-        reply_markup=get_main_menu_keyboard(),
+        reply_markup=get_main_menu_keyboard(callback.from_user.id),
     )
 
 
@@ -311,63 +312,86 @@ async def callback_back_to_menu(callback: CallbackQuery, state: FSMContext):
 @dp.callback_query(lambda c: c.data.startswith("menu_"))
 async def callback_menu(callback: CallbackQuery, state: FSMContext):
     """Обработчик главного меню"""
-    action = callback.data.split("_")[1]
+    try:
+        # Убираем префикс "menu_" чтобы получить action
+        action = callback.data[5:]  # Убираем первые 5 символов "menu_"
+        logger.info(f"Menu action received: {action}, User: {callback.from_user.id}, Full data: {callback.data}")
 
-    # Проверяем админские права для кнопки админ-панели
-    if action == "admin_panel":
-        if not AuthService.is_admin(callback.from_user.id):
-            await callback.answer("❌ У вас нет прав администратора", show_alert=True)
-            return
+        # Проверяем админские права для кнопки админ-панели
+        if action == "admin_panel":
+            logger.info(f"Admin panel button pressed by user {callback.from_user.id}")
+            is_admin = AuthService.is_admin(callback.from_user.id)
+            logger.info(f"User {callback.from_user.id} is admin: {is_admin}")
 
-        admin_text = (
-            "🔧 <b>Админ-панель:</b>\n\n"
-            "Доступные действия:"
-        )
-        await callback.message.edit_text(
-            admin_text,
-            parse_mode=ParseMode.HTML,
-            reply_markup=get_admin_menu_keyboard(),
-        )
-        await callback.answer()
-    elif action == "documents":
-        # Используем динамический файловый браузер
-        await state.set_state(FileBrowserState.browsing)
-        docs_path = f"{settings.documents_path}"
+            if not is_admin:
+                logger.warning(f"Unauthorized admin panel access attempt by user {callback.from_user.id}")
+                await callback.answer("❌ У вас нет прав администратора", show_alert=True)
+                return
 
-        # Сохраняем начальные данные в FSM
-        import hashlib
-        docs_folder = Path(docs_path)
+            logger.info(f"Showing admin panel to user {callback.from_user.id}")
+            admin_text = (
+                "🔧 <b>Админ-панель:</b>\n\n"
+                "Доступные действия:"
+            )
+            await callback.message.edit_text(
+                admin_text,
+                parse_mode=ParseMode.HTML,
+                reply_markup=get_admin_menu_keyboard(),
+            )
+            logger.info(f"Admin panel shown successfully to user {callback.from_user.id}")
+            await callback.answer()
+        elif action == "documents":
+            # Используем динамический файловый браузер
+            await state.set_state(FileBrowserState.browsing)
+            docs_path = f"{settings.documents_path}"
 
-        folders = []
-        files = []
+            # Сохраняем начальные данные в FSM
+            import hashlib
+            docs_folder = Path(docs_path)
 
-        for item in sorted(docs_folder.iterdir(), key=lambda x: (not x.is_dir(), x.name)):
-            if item.is_dir():
-                name_hash = hashlib.md5(item.name.encode('utf-8')).hexdigest()[:8]
-                folders.append((name_hash, item.name, str(item)))
-            elif item.is_file():
-                name_hash = hashlib.md5(item.name.encode('utf-8')).hexdigest()[:8]
-                files.append((name_hash, item.name, str(item)))
+            folders = []
+            files = []
 
-        await state.update_data(
-            current_path=docs_path,
-            relative_path="",  # Пустой путь = корень documents
-            folders=folders,
-            files=files,
-            root_path=docs_path  # Сохраняем корневой путь для ограничения
-        )
+            for item in sorted(docs_folder.iterdir(), key=lambda x: (not x.is_dir(), x.name)):
+                if item.is_dir():
+                    name_hash = hashlib.md5(item.name.encode('utf-8')).hexdigest()[:8]
+                    folders.append((name_hash, item.name, str(item)))
+                elif item.is_file():
+                    name_hash = hashlib.md5(item.name.encode('utf-8')).hexdigest()[:8]
+                    files.append((name_hash, item.name, str(item)))
 
-        await callback.message.edit_text(
-            "📚 Документы:\n\nВыберите папку:",
-            reply_markup=get_folder_keyboard(docs_path),
-        )
-    elif action == "tests":
-        await callback.message.edit_text(
-            "📝 Выберите группу теста:",
-            reply_markup=get_test_groups_keyboard(),
-        )
+            await state.update_data(
+                current_path=docs_path,
+                relative_path="",  # Пустой путь = корень documents
+                folders=folders,
+                files=files,
+                root_path=docs_path  # Сохраняем корневой путь для ограничения
+            )
 
-    await callback.answer()
+            await callback.message.edit_text(
+                "📚 Документы:\n\nВыберите папку:",
+                reply_markup=get_folder_keyboard(docs_path),
+            )
+            logger.info(f"Documents browser opened by user {callback.from_user.id}")
+            await callback.answer()
+        elif action == "tests":
+            logger.info(f"Tests button pressed by user {callback.from_user.id}")
+            await callback.message.edit_text(
+                "📝 Выберите группу теста:",
+                reply_markup=get_test_groups_keyboard(),
+            )
+            logger.info(f"Tests menu shown to user {callback.from_user.id}")
+            await callback.answer()
+        else:
+            logger.warning(f"Unknown menu action: {action}")
+            await callback.answer("❌ Неизвестное действие")
+
+    except Exception as e:
+        logger.error(f"Error in callback_menu: {e}", exc_info=True)
+        try:
+            await callback.answer("❌ Произошла ошибка", show_alert=True)
+        except Exception as callback_error:
+            logger.error(f"Error answering callback: {callback_error}")
 
 
 @dp.callback_query(lambda c: c.data.startswith("category_"))
@@ -876,18 +900,26 @@ async def callback_admin_load_tests(callback: CallbackQuery):
 
 async def main():
     """Запуск бота"""
-    # Инициализируем базу данных
-    init_db()
+    try:
+        # Инициализируем базу данных
+        logger.info("Initializing database...")
+        init_db()
+        logger.info("Database initialized successfully")
 
-    # Инициализируем настройки из .env при первом запуске
-    from core import SettingsService
-    SettingsService.initialize_from_env()
+        # Инициализируем настройки из .env при первом запуске
+        logger.info("Initializing settings from environment...")
+        from core import SettingsService
+        SettingsService.initialize_from_env()
+        logger.info("Settings initialized successfully")
 
-    # Удаляем webhook и запускаем long polling
-    await bot.delete_webhook(drop_pending_updates=True)
-    print("🤖 Бот запущен!")
+        # Удаляем webhook и запускаем long polling
+        await bot.delete_webhook(drop_pending_updates=True)
+        logger.info("Bot started!")
 
-    await dp.start_polling(bot)
+        await dp.start_polling(bot)
+    except Exception as e:
+        logger.error(f"Fatal error in bot: {e}", exc_info=True)
+        raise
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from typing import List, Optional
 from config import DOCUMENT_CATEGORIES
+from core import AuthService
 
 
 def get_categories_keyboard() -> InlineKeyboardMarkup:
@@ -106,13 +107,16 @@ def get_test_answers_keyboard(question_num: int, options: List[str]) -> InlineKe
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def get_main_menu_keyboard() -> InlineKeyboardMarkup:
+def get_main_menu_keyboard(user_id: Optional[int] = None) -> InlineKeyboardMarkup:
     """Главное меню"""
     buttons = [
         [InlineKeyboardButton(text="📚 Документы", callback_data="menu_documents")],
         [InlineKeyboardButton(text="📝 Тесты", callback_data="menu_tests")],
-        [InlineKeyboardButton(text="🔧 Админ-панель", callback_data="menu_admin_panel")],
     ]
+
+    # Добавляем кнопку админ-панели только для администраторов
+    if user_id and AuthService.is_admin(user_id):
+        buttons.append([InlineKeyboardButton(text="🔧 Админ-панель", callback_data="menu_admin_panel")])
 
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
