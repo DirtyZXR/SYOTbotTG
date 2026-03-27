@@ -181,9 +181,12 @@ async def cmd_load_tests(message: Message):
         await message.answer("❌ У вас нет прав администратора")
         return
 
-    from config import settings
-    count = TestService.load_tests_from_json(f"{settings.documents_path}/../tests")
-    await message.answer(f"📝 Добавлено тестов: {count}")
+    await message.answer(
+        "📝 <b>Система тестирования</b>\n\n"
+        "⚠️ В разработке\n\n"
+        "Функционал тестирования находится в стадии разработки.",
+        parse_mode=ParseMode.HTML,
+    )
 
 
 # ==================== Registration Handlers ====================
@@ -366,10 +369,12 @@ async def callback_menu(callback: CallbackQuery, state: FSMContext):
         elif action == "tests":
             logger.info(f"Tests button pressed by user {callback.from_user.id}")
             await callback.message.edit_text(
-                "📝 Выберите группу теста:",
-                reply_markup=get_test_groups_keyboard(),
+                "📝 <b>Система тестирования</b>\n\n"
+                "⚠️ В разработке\n\n"
+                "Функционал тестирования находится в стадии разработки.",
+                parse_mode=ParseMode.HTML,
             )
-            logger.info(f"Tests menu shown to user {callback.from_user.id}")
+            logger.info(f"Tests development message shown to user {callback.from_user.id}")
             await callback.answer()
         else:
             logger.warning(f"Unknown menu action: {action}")
@@ -446,43 +451,24 @@ async def callback_document(callback: CallbackQuery):
 @dp.callback_query(lambda c: c.data.startswith("test_group_"))
 async def callback_test_group(callback: CallbackQuery):
     """Обработчик выбора группы теста"""
-    group = int(callback.data.split("_")[2])
-
-    test = TestService.get_test_by_group(group)
-
-    if not test:
-        await callback.answer(f"❌ Тест для группы {group} не найден", show_alert=True)
-        return
-
-    # Сохраняем текущий тест и вопрос в состоянии (упрощённая версия)
-    # В реальном приложении используйте FSM (Finite State Machine)
-    questions = test.questions
-
-    # Первый вопрос
-    first_question = questions[0]
+    await callback.answer("⚠️ В разработке", show_alert=True)
     await callback.message.edit_text(
-        f"📝 <b>Тест: Группа {group}</b>\n\n"
-        f"❓ Вопрос 1/{len(questions)}:\n"
-        f"{first_question['question']}",
-        reply_markup=get_test_answers_keyboard(1, first_question["options"]),
+        "📝 <b>Система тестирования</b>\n\n"
+        "⚠️ В разработке\n\n"
+        "Функционал тестирования находится в стадии разработки.",
+        parse_mode=ParseMode.HTML,
     )
-    await callback.answer()
 
 
 @dp.callback_query(lambda c: c.data.startswith("answer_"))
 async def callback_answer(callback: CallbackQuery):
     """Обработчик ответа на вопрос теста"""
-    parts = callback.data.split("_")
-    question_num = int(parts[1])
-    answer_num = int(parts[2])
-
-    # Это упрощённая версия - в реальном приложении нужно хранить состояние теста
-    # и собирать ответы пользователя
-    await callback.answer(f"✅ Выбран ответ {answer_num}")
+    await callback.answer("⚠️ В разработке", show_alert=True)
     await callback.message.edit_text(
-        f"✅ Ответ {answer_num} записан\n\n"
-        f"❗️ Это упрощённая версия.\n"
-        f"В полной версии здесь будет следующий вопрос.",
+        "📝 <b>Система тестирования</b>\n\n"
+        "⚠️ В разработке\n\n"
+        "Функционал тестирования находится в стадии разработки.",
+        parse_mode=ParseMode.HTML,
     )
 
 
@@ -841,23 +827,14 @@ async def callback_admin_load_tests(callback: CallbackQuery):
         await callback.answer("❌ У вас нет прав администратора", show_alert=True)
         return
 
-    count = TestService.load_tests_from_json(f"{settings.documents_path}/../tests")
-    explanation = (
-        "📝 <b>Сканирование тестов завершено!</b>\n\n"
-        "Добавлено тестов в базу данных: {}\n\n"
-        "<b>Что это делает:</b>\n"
-        "• Сканирует папку data/tests\n"
-        "• Находит все JSON-файлы с тестами\n"
-        "• Создаёт записи тестов в БД\n"
-        "• Позволяет пользователям проходить тесты через бота"
-    ).format(count)
-
     await callback.message.edit_text(
-        explanation,
+        "📝 <b>Система тестирования</b>\n\n"
+        "⚠️ В разработке\n\n"
+        "Функционал тестирования находится в стадии разработки.",
         parse_mode=ParseMode.HTML,
         reply_markup=get_admin_menu_keyboard(),
     )
-    await callback.answer(f"📝 Добавлено тестов: {count}")
+    await callback.answer()
 
 
 # ==================== Entry Point ====================
