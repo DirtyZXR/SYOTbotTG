@@ -14,6 +14,7 @@ class User(Base):
     full_name = Column(String)
     username = Column(String)  # Telegram username
     is_verified = Column(Boolean, default=False)
+    is_admin = Column(Boolean, default=False)  # Администратор системы
     created_at = Column(DateTime, server_default=func.now())
     access_granted_at = Column(DateTime)
 

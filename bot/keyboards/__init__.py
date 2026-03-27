@@ -8,6 +8,7 @@ from .inline import (
     get_cancel_keyboard,
     get_admin_menu_keyboard,
     get_cancel_operation_keyboard,
+    get_manage_admins_keyboard,
 )
 from .file_browser import (
     get_folder_keyboard,
@@ -24,6 +25,7 @@ __all__ = [
     "get_cancel_keyboard",
     "get_admin_menu_keyboard",
     "get_cancel_operation_keyboard",
+    "get_manage_admins_keyboard",
     "get_folder_keyboard",
     "get_back_to_menu_button",
 ]

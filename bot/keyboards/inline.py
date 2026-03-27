@@ -129,11 +129,32 @@ def get_admin_menu_keyboard() -> InlineKeyboardMarkup:
     """Клавиатура админского меню"""
     buttons = [
         [InlineKeyboardButton(text="👥 Список пользователей", callback_data="admin_users")],
+        [InlineKeyboardButton(text="👨‍💼 Управление админами", callback_data="admin_manage_admins")],
         [InlineKeyboardButton(text="🔑 Сменить секретный код", callback_data="admin_change_code")],
         [InlineKeyboardButton(text="📚 Загрузить документы", callback_data="admin_load_docs")],
         [InlineKeyboardButton(text="📝 Загрузить тесты", callback_data="admin_load_tests")],
         [InlineKeyboardButton(text="❌ Закрыть", callback_data="admin_close")],
     ]
+
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_manage_admins_keyboard(users) -> InlineKeyboardMarkup:
+    """Клавиатура для управления админами"""
+    buttons = []
+
+    for user in users:
+        # Показываем только верифицированных пользователей
+        if user.is_verified:
+            status = "👨‍💼" if user.is_admin else "👤"
+            action = "remove_admin" if user.is_admin else "add_admin"
+            button_text = f"{status} {user.full_name or user.email}"
+
+            buttons.append([
+                InlineKeyboardButton(text=button_text, callback_data=f"{action}_{user.id}")
+            ])
+
+    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_admin_menu")])
 
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 

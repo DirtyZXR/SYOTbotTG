@@ -26,6 +26,7 @@ from bot.keyboards import (
     get_back_to_menu_button,
     get_admin_menu_keyboard,
     get_cancel_operation_keyboard,
+    get_manage_admins_keyboard,
 )
 from bot.states import RegistrationForm, FileBrowserState, AdminState
 from database import init_db
@@ -90,7 +91,7 @@ async def cmd_cancel(message: Message, state: FSMContext):
 
     # Если это админская операция
     if current_state == AdminState.changing_code:
-        if message.from_user.id == settings.admin_id:
+        if AuthService.is_admin(message.from_user.id):
             await state.clear()
             await message.answer(
                 "🔧 <b>Меню администратора:</b>\n\n"
@@ -119,7 +120,8 @@ async def cmd_cancel(message: Message, state: FSMContext):
 @dp.message(Command("admin"))
 async def cmd_admin(message: Message, state: FSMContext):
     """Меню администратора"""
-    if message.from_user.id != settings.admin_id:
+    # Проверяем админские права через AuthService
+    if not AuthService.is_admin(message.from_user.id):
         await message.answer("❌ У вас нет прав администратора")
         return
 
@@ -133,7 +135,7 @@ async def cmd_admin(message: Message, state: FSMContext):
 @dp.message(Command("users"))
 async def cmd_users(message: Message):
     """Список пользователей"""
-    if message.from_user.id != settings.admin_id:
+    if not AuthService.is_admin(message.from_user.id):
         await message.answer("❌ У вас нет прав администратора")
         return
 
@@ -152,7 +154,7 @@ async def cmd_users(message: Message):
 @dp.message(Command("setcode"))
 async def cmd_setcode(message: Message):
     """Установить код безопасности"""
-    if message.from_user.id != settings.admin_id:
+    if not AuthService.is_admin(message.from_user.id):
         await message.answer("❌ У вас нет прав администратора")
         return
 
@@ -174,7 +176,7 @@ async def cmd_setcode(message: Message):
 @dp.message(Command("load_docs"))
 async def cmd_load_docs(message: Message):
     """Загрузить документы из папки"""
-    if message.from_user.id != settings.admin_id:
+    if not AuthService.is_admin(message.from_user.id):
         await message.answer("❌ У вас нет прав администратора")
         return
 
@@ -185,7 +187,7 @@ async def cmd_load_docs(message: Message):
 @dp.message(Command("load_tests"))
 async def cmd_load_tests(message: Message):
     """Загрузить тесты из папки"""
-    if message.from_user.id != settings.admin_id:
+    if not AuthService.is_admin(message.from_user.id):
         await message.answer("❌ У вас нет прав администратора")
         return
 
@@ -269,7 +271,7 @@ async def callback_cancel_registration(callback: CallbackQuery, state: FSMContex
 @dp.callback_query(lambda c: c.data == "cancel_operation")
 async def callback_cancel_operation(callback: CallbackQuery, state: FSMContext):
     """Обработчик отмены операции (для админских действий)"""
-    if callback.from_user.id != settings.admin_id:
+    if not AuthService.is_admin(callback.from_user.id):
         await callback.answer("❌ У вас нет прав администратора", show_alert=True)
         return
 
@@ -625,7 +627,7 @@ async def callback_back_folder(callback: CallbackQuery, state: FSMContext):
 @dp.callback_query(lambda c: c.data == "admin_users")
 async def callback_admin_users(callback: CallbackQuery):
     """Список пользователей"""
-    if callback.from_user.id != settings.admin_id:
+    if not AuthService.is_admin(callback.from_user.id):
         await callback.answer("❌ У вас нет прав администратора", show_alert=True)
         return
 
@@ -641,10 +643,121 @@ async def callback_admin_users(callback: CallbackQuery):
     await callback.answer()
 
 
+@dp.callback_query(lambda c: c.data == "admin_manage_admins")
+async def callback_admin_manage_admins(callback: CallbackQuery):
+    """Управление администраторами"""
+    if not AuthService.is_admin(callback.from_user.id):
+        await callback.answer("❌ У вас нет прав администратора", show_alert=True)
+        return
+
+    from database import UserRepository, SessionLocal
+
+    db = SessionLocal()
+    user_repo = UserRepository(db)
+    users = user_repo.get_all_users()
+    db.close()
+
+    if not users:
+        await callback.answer("❌ Нет зарегистрированных пользователей", show_alert=True)
+        return
+
+    await callback.message.edit_text(
+        "👨‍💼 <b>Управление администраторами</b>\n\n"
+        "Нажмите на пользователя для назначения/снятия админских прав:",
+        parse_mode=ParseMode.HTML,
+        reply_markup=get_manage_admins_keyboard(users),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(lambda c: c.data.startswith("add_admin_"))
+async def callback_add_admin(callback: CallbackQuery):
+    """Назначить администратора"""
+    if not AuthService.is_admin(callback.from_user.id):
+        await callback.answer("❌ У вас нет прав администратора", show_alert=True)
+        return
+
+    user_id = int(callback.data.split("_")[-1])
+
+    from database import UserRepository, SessionLocal
+
+    db = SessionLocal()
+    user_repo = UserRepository(db)
+    user = user_repo.get_by_id(user_id)
+
+    if not user:
+        db.close()
+        await callback.answer("❌ Пользователь не найден", show_alert=True)
+        return
+
+    user_repo.set_admin(user, is_admin=True)
+    users = user_repo.get_all_users()
+    db.close()
+
+    await callback.message.edit_text(
+        f"✅ <b>Пользователь назначен администратором!</b>\n\n"
+        f"👤 {user.full_name or user.email}",
+        parse_mode=ParseMode.HTML,
+        reply_markup=get_manage_admins_keyboard(users),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(lambda c: c.data.startswith("remove_admin_"))
+async def callback_remove_admin(callback: CallbackQuery):
+    """Снять права администратора"""
+    if not AuthService.is_admin(callback.from_user.id):
+        await callback.answer("❌ У вас нет прав администратора", show_alert=True)
+        return
+
+    user_id = int(callback.data.split("_")[-1])
+
+    from database import UserRepository, SessionLocal
+
+    db = SessionLocal()
+    user_repo = UserRepository(db)
+    user = user_repo.get_by_id(user_id)
+
+    if not user:
+        db.close()
+        await callback.answer("❌ Пользователь не найден", show_alert=True)
+        return
+
+    # Проверяем, что не пытаемся снять права с супер-админа
+    if user.telegram_id == settings.admin_id:
+        db.close()
+        await callback.answer("❌ Нельзя снять права с супер-админа", show_alert=True)
+        return
+
+    user_repo.set_admin(user, is_admin=False)
+    users = user_repo.get_all_users()
+    db.close()
+
+    await callback.message.edit_text(
+        f"❌ <b>Права администратора сняты!</b>\n\n"
+        f"👤 {user.full_name or user.email}",
+        parse_mode=ParseMode.HTML,
+        reply_markup=get_manage_admins_keyboard(users),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(lambda c: c.data == "back_to_admin_menu")
+async def callback_back_to_admin_menu(callback: CallbackQuery):
+    """Возврат в админское меню"""
+    await callback.message.edit_text(
+        "🔧 <b>Меню администратора:</b>\n\n"
+        "Доступные действия:",
+        parse_mode=ParseMode.HTML,
+        reply_markup=get_admin_menu_keyboard(),
+    )
+    await callback.answer()
+
+
 @dp.callback_query(lambda c: c.data == "admin_change_code")
 async def callback_admin_change_code(callback: CallbackQuery, state: FSMContext):
     """Начало смены секретного кода"""
-    if callback.from_user.id != settings.admin_id:
+    if not AuthService.is_admin(callback.from_user.id):
         await callback.answer("❌ У вас нет прав администратора", show_alert=True)
         return
 
@@ -661,7 +774,7 @@ async def callback_admin_change_code(callback: CallbackQuery, state: FSMContext)
 @dp.message(StateFilter(AdminState.changing_code))
 async def process_new_code(message: Message, state: FSMContext):
     """Обработчик ввода нового секретного кода"""
-    if message.from_user.id != settings.admin_id:
+    if not AuthService.is_admin(message.from_user.id):
         await state.clear()
         await message.answer("❌ У вас нет прав администратора")
         return
@@ -694,7 +807,7 @@ async def process_new_code(message: Message, state: FSMContext):
 @dp.callback_query(lambda c: c.data == "admin_load_docs")
 async def callback_admin_load_docs(callback: CallbackQuery):
     """Загрузить документы из папки"""
-    if callback.from_user.id != settings.admin_id:
+    if not AuthService.is_admin(callback.from_user.id):
         await callback.answer("❌ У вас нет прав администратора", show_alert=True)
         return
 
@@ -710,7 +823,7 @@ async def callback_admin_load_docs(callback: CallbackQuery):
 @dp.callback_query(lambda c: c.data == "admin_load_tests")
 async def callback_admin_load_tests(callback: CallbackQuery):
     """Загрузить тесты из папки"""
-    if callback.from_user.id != settings.admin_id:
+    if not AuthService.is_admin(callback.from_user.id):
         await callback.answer("❌ У вас нет прав администратора", show_alert=True)
         return
 
@@ -726,7 +839,7 @@ async def callback_admin_load_tests(callback: CallbackQuery):
 @dp.callback_query(lambda c: c.data == "admin_close")
 async def callback_admin_close(callback: CallbackQuery):
     """Закрыть админское меню"""
-    if callback.from_user.id != settings.admin_id:
+    if not AuthService.is_admin(callback.from_user.id):
         await callback.answer("❌ У вас нет прав администратора", show_alert=True)
         return
 

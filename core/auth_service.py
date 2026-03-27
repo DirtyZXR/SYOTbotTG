@@ -172,3 +172,13 @@ class AuthService:
         user = user_repo.get_by_telegram_id(telegram_id)
         db.close()
         return user
+
+    @staticmethod
+    def is_admin(telegram_id: int) -> bool:
+        """Проверка админских прав пользователя"""
+        db = SessionLocal()
+        user_repo = UserRepository(db)
+
+        is_admin = user_repo.is_admin(telegram_id)
+        db.close()
+        return is_admin

@@ -54,3 +54,30 @@ class UserRepository:
         """Удаление пользователя"""
         self.db.delete(user)
         self.db.commit()
+
+    def set_admin(self, user: User, is_admin: bool = True) -> User:
+        """Назначение/снятие прав администратора"""
+        user.is_admin = is_admin
+        self.db.commit()
+        self.db.refresh(user)
+        return user
+
+    def get_by_id(self, user_id: int) -> Optional[User]:
+        """Получение пользователя по ID"""
+        return self.db.query(User).filter(User.id == user_id).first()
+
+    def is_admin(self, telegram_id: int) -> bool:
+        """Проверка, является ли пользователь администратором"""
+        user = self.get_by_telegram_id(telegram_id)
+        if user:
+            return user.is_admin
+        # Проверка супер-админа из настроек
+        return telegram_id == self._get_super_admin_id()
+
+    def _get_super_admin_id(self) -> int:
+        """Получение ID супер-админа из настроек"""
+        try:
+            from config import settings
+            return settings.admin_id
+        except:
+            return 0
