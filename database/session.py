@@ -23,4 +23,5 @@ def init_db():
     """Инициализация базы данных"""
     from models import User, Document, Test, TestResult, Settings
 
+    # Создаём таблицы
     Base.metadata.create_all(bind=engine)

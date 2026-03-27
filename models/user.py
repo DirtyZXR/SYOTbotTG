@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, DateTime, Boolean
 from sqlalchemy.sql import func
-from database.session import Base
+from database import Base
 
 
 class User(Base):
@@ -17,21 +17,6 @@ class User(Base):
     is_admin = Column(Boolean, default=False)  # Администратор системы
     created_at = Column(DateTime, server_default=func.now())
     access_granted_at = Column(DateTime)
-
-
-class Settings(Base):
-    """Настройки системы"""
-
-    __tablename__ = "settings"
-
-    id = Column(Integer, primary_key=True)
-    key = Column(String, unique=True, nullable=False, index=True)
-    value = Column(String, nullable=False)
-    created_at = Column(DateTime, server_default=func.now())
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
-
-    def __repr__(self):
-        return f"<Settings(key={self.key}, value={self.value})>"
 
     def __repr__(self):
         return f"<User(telegram_id={self.telegram_id}, email={self.email})>"
