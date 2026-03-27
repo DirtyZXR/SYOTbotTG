@@ -9,3 +9,8 @@ class FileBrowserState(StatesGroup):
     # - relative_path: относительный путь от data/documents
     # - folders: список папок с их хешами
     # - files: список файлов с их хешами
+
+
+class AdminState(StatesGroup):
+    """Состояния админского меню"""
+    changing_code = State()  # Ввод нового секретного кода

@@ -6,6 +6,8 @@ from .inline import (
     get_test_answers_keyboard,
     get_main_menu_keyboard,
     get_cancel_keyboard,
+    get_admin_menu_keyboard,
+    get_cancel_operation_keyboard,
 )
 from .file_browser import (
     get_folder_keyboard,
@@ -20,6 +22,8 @@ __all__ = [
     "get_test_answers_keyboard",
     "get_main_menu_keyboard",
     "get_cancel_keyboard",
+    "get_admin_menu_keyboard",
+    "get_cancel_operation_keyboard",
     "get_folder_keyboard",
     "get_back_to_menu_button",
 ]

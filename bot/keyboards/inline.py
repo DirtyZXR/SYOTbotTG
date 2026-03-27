@@ -123,3 +123,25 @@ def get_cancel_keyboard() -> InlineKeyboardMarkup:
     ]
 
     return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_admin_menu_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура админского меню"""
+    buttons = [
+        [InlineKeyboardButton(text="👥 Список пользователей", callback_data="admin_users")],
+        [InlineKeyboardButton(text="🔑 Сменить секретный код", callback_data="admin_change_code")],
+        [InlineKeyboardButton(text="📚 Загрузить документы", callback_data="admin_load_docs")],
+        [InlineKeyboardButton(text="📝 Загрузить тесты", callback_data="admin_load_tests")],
+        [InlineKeyboardButton(text="❌ Закрыть", callback_data="admin_close")],
+    ]
+
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_cancel_operation_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура с кнопкой отмены операции"""
+    buttons = [
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_operation")]
+    ]
+
+    return InlineKeyboardMarkup(inline_keyboard=buttons)

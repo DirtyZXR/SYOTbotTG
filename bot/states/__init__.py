@@ -1,4 +1,4 @@
 from .registration import RegistrationForm
-from .file_browser import FileBrowserState
+from .file_browser import FileBrowserState, AdminState
 
-__all__ = ["RegistrationForm", "FileBrowserState"]
+__all__ = ["RegistrationForm", "FileBrowserState", "AdminState"]

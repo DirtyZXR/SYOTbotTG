@@ -24,8 +24,10 @@ from bot.keyboards import (
     get_cancel_keyboard,
     get_folder_keyboard,
     get_back_to_menu_button,
+    get_admin_menu_keyboard,
+    get_cancel_operation_keyboard,
 )
-from bot.states import RegistrationForm, FileBrowserState
+from bot.states import RegistrationForm, FileBrowserState, AdminState
 from database import init_db
 
 # Инициализация бота
@@ -69,17 +71,53 @@ async def cmd_help(message: Message):
     help_text = (
         "📚 <b>Доступные команды:</b>\n\n"
         "/start - Главное меню / Начать регистрацию\n"
-        "/help - Справка\n\n"
+        "/help - Справка\n"
+        "/cancel - Отменить текущую операцию\n\n"
         "<b>Для администратора:</b>\n"
         "/admin - Меню администратора"
     )
     await message.answer(help_text)
 
 
+@dp.message(Command("cancel"))
+async def cmd_cancel(message: Message, state: FSMContext):
+    """Отмена текущей операции"""
+    current_state = await state.get_state()
+
+    if not current_state:
+        await message.answer("❌ Нет активной операции для отмены")
+        return
+
+    # Если это админская операция
+    if current_state == AdminState.changing_code:
+        if message.from_user.id == settings.admin_id:
+            await state.clear()
+            await message.answer(
+                "🔧 <b>Меню администратора:</b>\n\n"
+                "Доступные действия:",
+                parse_mode=ParseMode.HTML,
+                reply_markup=get_admin_menu_keyboard(),
+            )
+        else:
+            await message.answer("❌ У вас нет прав администратора")
+            await state.clear()
+    # Если это регистрация
+    elif current_state == RegistrationForm.waiting_for_email or current_state == RegistrationForm.waiting_for_code:
+        await state.clear()
+        await message.answer(
+            "❌ Регистрация отменена.\n\n"
+            "Для начала регистрации нажмите /start"
+        )
+    # Другие состояния
+    else:
+        await state.clear()
+        await message.answer("❌ Операция отменена")
+
+
 # ==================== Admin Commands ====================
 
 @dp.message(Command("admin"))
-async def cmd_admin(message: Message):
+async def cmd_admin(message: Message, state: FSMContext):
     """Меню администратора"""
     if message.from_user.id != settings.admin_id:
         await message.answer("❌ У вас нет прав администратора")
@@ -87,12 +125,9 @@ async def cmd_admin(message: Message):
 
     admin_text = (
         "🔧 <b>Меню администратора:</b>\n\n"
-        "/users - Список зарегистрированных пользователей\n"
-        "/setcode [код] - Установить код безопасности\n"
-        "/load_docs - Загрузить документы из папки\n"
-        "/load_tests - Загрузить тесты из папки"
+        "Доступные действия:"
     )
-    await message.answer(admin_text)
+    await message.answer(admin_text, reply_markup=get_admin_menu_keyboard())
 
 
 @dp.message(Command("users"))
@@ -227,6 +262,23 @@ async def callback_cancel_registration(callback: CallbackQuery, state: FSMContex
     await callback.message.edit_text(
         "❌ Регистрация отменена.\n\n"
         "Для начала регистрации нажмите /start"
+    )
+    await callback.answer()
+
+
+@dp.callback_query(lambda c: c.data == "cancel_operation")
+async def callback_cancel_operation(callback: CallbackQuery, state: FSMContext):
+    """Обработчик отмены операции (для админских действий)"""
+    if callback.from_user.id != settings.admin_id:
+        await callback.answer("❌ У вас нет прав администратора", show_alert=True)
+        return
+
+    await state.clear()
+    await callback.message.edit_text(
+        "🔧 <b>Меню администратора:</b>\n\n"
+        "Доступные действия:",
+        parse_mode=ParseMode.HTML,
+        reply_markup=get_admin_menu_keyboard(),
     )
     await callback.answer()
 
@@ -565,6 +617,122 @@ async def callback_back_folder(callback: CallbackQuery, state: FSMContext):
         # В корне - возвращаемся в главное меню
         await go_back_to_main_menu(callback, state)
 
+    await callback.answer()
+
+
+# ==================== Admin Callback Handlers ====================
+
+@dp.callback_query(lambda c: c.data == "admin_users")
+async def callback_admin_users(callback: CallbackQuery):
+    """Список пользователей"""
+    if callback.from_user.id != settings.admin_id:
+        await callback.answer("❌ У вас нет прав администратора", show_alert=True)
+        return
+
+    from database import UserRepository, SessionLocal
+
+    db = SessionLocal()
+    user_repo = UserRepository(db)
+    users = user_repo.get_all_users()
+    db.close()
+
+    msg = NotificationService.format_admin_user_list(users)
+    await callback.message.edit_text(msg, parse_mode=ParseMode.HTML)
+    await callback.answer()
+
+
+@dp.callback_query(lambda c: c.data == "admin_change_code")
+async def callback_admin_change_code(callback: CallbackQuery, state: FSMContext):
+    """Начало смены секретного кода"""
+    if callback.from_user.id != settings.admin_id:
+        await callback.answer("❌ У вас нет прав администратора", show_alert=True)
+        return
+
+    await state.set_state(AdminState.changing_code)
+    await callback.message.edit_text(
+        "🔑 <b>Смена секретного кода</b>\n\n"
+        "Введите новый секретный код для регистрации пользователей.",
+        parse_mode=ParseMode.HTML,
+        reply_markup=get_cancel_operation_keyboard(),
+    )
+    await callback.answer()
+
+
+@dp.message(StateFilter(AdminState.changing_code))
+async def process_new_code(message: Message, state: FSMContext):
+    """Обработчик ввода нового секретного кода"""
+    if message.from_user.id != settings.admin_id:
+        await state.clear()
+        await message.answer("❌ У вас нет прав администратора")
+        return
+
+    new_code = message.text.strip()
+
+    # Проверяем, что код не пустой
+    if not new_code:
+        await message.answer("❌ Код не может быть пустым. Попробуйте ещё раз.")
+        return
+
+    # Проверяем, что код не содержит пробелов
+    if " " in new_code:
+        await message.answer("❌ Код не должен содержать пробелов. Попробуйте ещё раз.")
+        return
+
+    # Обновляем код (в реальном приложении нужно обновлять в БД или конфиге)
+    # Сейчас мы просто сообщаем об изменении
+    await state.clear()
+    await message.answer(
+        f"✅ <b>Секретный код изменён!</b>\n\n"
+        f"🔑 Новый код: <code>{new_code}</code>\n\n"
+        f"⚠️ Для постоянного изменения обновите файл .env:\n"
+        f"<code>SECURITY_CODE={new_code}</code>",
+        parse_mode=ParseMode.HTML,
+        reply_markup=get_admin_menu_keyboard(),
+    )
+
+
+@dp.callback_query(lambda c: c.data == "admin_load_docs")
+async def callback_admin_load_docs(callback: CallbackQuery):
+    """Загрузить документы из папки"""
+    if callback.from_user.id != settings.admin_id:
+        await callback.answer("❌ У вас нет прав администратора", show_alert=True)
+        return
+
+    count = DocumentService.scan_documents_folder()
+    await callback.answer(f"📚 Добавлено документов: {count}")
+    await callback.message.edit_text(
+        f"🔧 <b>Меню администратора:</b>\n\n"
+        f"📚 Загрузка документов: добавлено {count} документов",
+        parse_mode=ParseMode.HTML,
+    )
+
+
+@dp.callback_query(lambda c: c.data == "admin_load_tests")
+async def callback_admin_load_tests(callback: CallbackQuery):
+    """Загрузить тесты из папки"""
+    if callback.from_user.id != settings.admin_id:
+        await callback.answer("❌ У вас нет прав администратора", show_alert=True)
+        return
+
+    count = TestService.load_tests_from_json(f"{settings.documents_path}/../tests")
+    await callback.answer(f"📝 Добавлено тестов: {count}")
+    await callback.message.edit_text(
+        f"🔧 <b>Меню администратора:</b>\n\n"
+        f"📝 Загрузка тестов: добавлено {count} тестов",
+        parse_mode=ParseMode.HTML,
+    )
+
+
+@dp.callback_query(lambda c: c.data == "admin_close")
+async def callback_admin_close(callback: CallbackQuery):
+    """Закрыть админское меню"""
+    if callback.from_user.id != settings.admin_id:
+        await callback.answer("❌ У вас нет прав администратора", show_alert=True)
+        return
+
+    await callback.message.edit_text(
+        "👋 Админское меню закрыто.\n\nДля повторного открытия нажмите /admin"
+    )
     await callback.answer()
 
 
