@@ -2,6 +2,7 @@ from typing import Optional
 from database import SessionLocal, UserRepository
 from config import settings
 from models.user import User
+from .settings_service import SettingsService
 
 
 class AuthService:
@@ -9,6 +10,12 @@ class AuthService:
 
     def __init__(self):
         pass
+
+    @staticmethod
+    def get_security_code() -> str:
+        """Получение секретного кода (из БД)"""
+        code = SettingsService.get_security_code()
+        return code if code else settings.security_code
 
     @staticmethod
     def validate_email(email: str) -> tuple[bool, str]:
@@ -92,8 +99,9 @@ class AuthService:
             db.close()
             return False, "Вы уже верифицированы"
 
-        # Проверяем код безопасности
-        if code != settings.security_code:
+        # Проверяем код безопасности (получаем из БД)
+        security_code = AuthService.get_security_code()
+        if code != security_code:
             db.close()
             return False, "Неверный код безопасности"
 
@@ -117,8 +125,9 @@ class AuthService:
         db = SessionLocal()
         user_repo = UserRepository(db)
 
-        # Проверяем код безопасности
-        if code != settings.security_code:
+        # Проверяем код безопасности (получаем из БД)
+        security_code = AuthService.get_security_code()
+        if code != security_code:
             db.close()
             return False, "Неверный код безопасности"
 

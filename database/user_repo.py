@@ -69,15 +69,6 @@ class UserRepository:
     def is_admin(self, telegram_id: int) -> bool:
         """Проверка, является ли пользователь администратором"""
         user = self.get_by_telegram_id(telegram_id)
-        if user:
-            return user.is_admin
-        # Проверка супер-админа из настроек
-        return telegram_id == self._get_super_admin_id()
-
-    def _get_super_admin_id(self) -> int:
-        """Получение ID супер-админа из настроек"""
-        try:
-            from config import settings
-            return settings.admin_id
-        except:
-            return 0
+        if user and user.is_admin:
+            return True
+        return False

@@ -111,6 +111,7 @@ def get_main_menu_keyboard() -> InlineKeyboardMarkup:
     buttons = [
         [InlineKeyboardButton(text="📚 Документы", callback_data="menu_documents")],
         [InlineKeyboardButton(text="📝 Тесты", callback_data="menu_tests")],
+        [InlineKeyboardButton(text="🔧 Админ-панель", callback_data="menu_admin_panel")],
     ]
 
     return InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -131,9 +132,9 @@ def get_admin_menu_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="👥 Список пользователей", callback_data="admin_users")],
         [InlineKeyboardButton(text="👨‍💼 Управление админами", callback_data="admin_manage_admins")],
         [InlineKeyboardButton(text="🔑 Сменить секретный код", callback_data="admin_change_code")],
-        [InlineKeyboardButton(text="📚 Загрузить документы", callback_data="admin_load_docs")],
-        [InlineKeyboardButton(text="📝 Загрузить тесты", callback_data="admin_load_tests")],
-        [InlineKeyboardButton(text="❌ Закрыть", callback_data="admin_close")],
+        [InlineKeyboardButton(text="📚 Сканировать документы", callback_data="admin_load_docs")],
+        [InlineKeyboardButton(text="📝 Сканировать тесты", callback_data="admin_load_tests")],
+        [InlineKeyboardButton(text="🔙 В главное меню", callback_data="back_to_menu")],
     ]
 
     return InlineKeyboardMarkup(inline_keyboard=buttons)

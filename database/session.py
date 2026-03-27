@@ -21,6 +21,6 @@ Base = declarative_base()
 
 def init_db():
     """Инициализация базы данных"""
-    from models import User, Document, Test, TestResult
+    from models import User, Document, Test, TestResult, Settings
 
     Base.metadata.create_all(bind=engine)

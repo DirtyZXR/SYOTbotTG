@@ -119,7 +119,7 @@ async def cmd_cancel(message: Message, state: FSMContext):
 
 @dp.message(Command("admin"))
 async def cmd_admin(message: Message, state: FSMContext):
-    """Меню администратора"""
+    """Меню администратора (только для тестов, используйте кнопку в главном меню)"""
     # Проверяем админские права через AuthService
     if not AuthService.is_admin(message.from_user.id):
         await message.answer("❌ У вас нет прав администратора")
@@ -127,9 +127,9 @@ async def cmd_admin(message: Message, state: FSMContext):
 
     admin_text = (
         "🔧 <b>Меню администратора:</b>\n\n"
-        "Доступные действия:"
+        "Используйте кнопку 'Админ-панель' в главном меню"
     )
-    await message.answer(admin_text, reply_markup=get_admin_menu_keyboard())
+    await message.answer(admin_text)
 
 
 @dp.message(Command("users"))
@@ -313,7 +313,23 @@ async def callback_menu(callback: CallbackQuery, state: FSMContext):
     """Обработчик главного меню"""
     action = callback.data.split("_")[1]
 
-    if action == "documents":
+    # Проверяем админские права для кнопки админ-панели
+    if action == "admin_panel":
+        if not AuthService.is_admin(callback.from_user.id):
+            await callback.answer("❌ У вас нет прав администратора", show_alert=True)
+            return
+
+        admin_text = (
+            "🔧 <b>Админ-панель:</b>\n\n"
+            "Доступные действия:"
+        )
+        await callback.message.edit_text(
+            admin_text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=get_admin_menu_keyboard(),
+        )
+        await callback.answer()
+    elif action == "documents":
         # Используем динамический файловый браузер
         await state.set_state(FileBrowserState.browsing)
         docs_path = f"{settings.documents_path}"
@@ -723,10 +739,10 @@ async def callback_remove_admin(callback: CallbackQuery):
         await callback.answer("❌ Пользователь не найден", show_alert=True)
         return
 
-    # Проверяем, что не пытаемся снять права с супер-админа
-    if user.telegram_id == settings.admin_id:
+    # Проверяем, что не пытаемся снять права с самого себя
+    if user.telegram_id == callback.from_user.id:
         db.close()
-        await callback.answer("❌ Нельзя снять права с супер-админа", show_alert=True)
+        await callback.answer("❌ Нельзя снять права администратора у самого себя", show_alert=True)
         return
 
     user_repo.set_admin(user, is_admin=False)
@@ -791,14 +807,15 @@ async def process_new_code(message: Message, state: FSMContext):
         await message.answer("❌ Код не должен содержать пробелов. Попробуйте ещё раз.")
         return
 
-    # Обновляем код (в реальном приложении нужно обновлять в БД или конфиге)
-    # Сейчас мы просто сообщаем об изменении
+    # Сохраняем код в БД
+    from core import SettingsService
+    SettingsService.set_security_code(new_code)
+
     await state.clear()
     await message.answer(
         f"✅ <b>Секретный код изменён!</b>\n\n"
         f"🔑 Новый код: <code>{new_code}</code>\n\n"
-        f"⚠️ Для постоянного изменения обновите файл .env:\n"
-        f"<code>SECURITY_CODE={new_code}</code>",
+        f"📋 Код сохранен в базе данных и теперь используется для регистрации.",
         parse_mode=ParseMode.HTML,
         reply_markup=get_admin_menu_keyboard(),
     )
@@ -806,47 +823,53 @@ async def process_new_code(message: Message, state: FSMContext):
 
 @dp.callback_query(lambda c: c.data == "admin_load_docs")
 async def callback_admin_load_docs(callback: CallbackQuery):
-    """Загрузить документы из папки"""
+    """Сканировать документы из папки"""
     if not AuthService.is_admin(callback.from_user.id):
         await callback.answer("❌ У вас нет прав администратора", show_alert=True)
         return
 
     count = DocumentService.scan_documents_folder()
-    await callback.answer(f"📚 Добавлено документов: {count}")
+    explanation = (
+        "📚 <b>Сканирование документов завершено!</b>\n\n"
+        "Добавлено документов в базу данных: {}\n\n"
+        "<b>Что это делает:</b>\n"
+        "• Сканирует папку data/documents\n"
+        "• Находит все файлы и создаёт записи в БД\n"
+        "• Позволяет пользователям скачивать документы через бота"
+    ).format(count)
+
     await callback.message.edit_text(
-        f"🔧 <b>Меню администратора:</b>\n\n"
-        f"📚 Загрузка документов: добавлено {count} документов",
+        explanation,
         parse_mode=ParseMode.HTML,
+        reply_markup=get_admin_menu_keyboard(),
     )
+    await callback.answer(f"📚 Добавлено документов: {count}")
 
 
 @dp.callback_query(lambda c: c.data == "admin_load_tests")
 async def callback_admin_load_tests(callback: CallbackQuery):
-    """Загрузить тесты из папки"""
+    """Сканировать тесты из папки"""
     if not AuthService.is_admin(callback.from_user.id):
         await callback.answer("❌ У вас нет прав администратора", show_alert=True)
         return
 
     count = TestService.load_tests_from_json(f"{settings.documents_path}/../tests")
-    await callback.answer(f"📝 Добавлено тестов: {count}")
+    explanation = (
+        "📝 <b>Сканирование тестов завершено!</b>\n\n"
+        "Добавлено тестов в базу данных: {}\n\n"
+        "<b>Что это делает:</b>\n"
+        "• Сканирует папку data/tests\n"
+        "• Находит все JSON-файлы с тестами\n"
+        "• Создаёт записи тестов в БД\n"
+        "• Позволяет пользователям проходить тесты через бота"
+    ).format(count)
+
     await callback.message.edit_text(
-        f"🔧 <b>Меню администратора:</b>\n\n"
-        f"📝 Загрузка тестов: добавлено {count} тестов",
+        explanation,
         parse_mode=ParseMode.HTML,
+        reply_markup=get_admin_menu_keyboard(),
     )
-
-
-@dp.callback_query(lambda c: c.data == "admin_close")
-async def callback_admin_close(callback: CallbackQuery):
-    """Закрыть админское меню"""
-    if not AuthService.is_admin(callback.from_user.id):
-        await callback.answer("❌ У вас нет прав администратора", show_alert=True)
-        return
-
-    await callback.message.edit_text(
-        "👋 Админское меню закрыто.\n\nДля повторного открытия нажмите /admin"
-    )
-    await callback.answer()
+    await callback.answer(f"📝 Добавлено тестов: {count}")
 
 
 # ==================== Entry Point ====================
@@ -855,6 +878,10 @@ async def main():
     """Запуск бота"""
     # Инициализируем базу данных
     init_db()
+
+    # Инициализируем настройки из .env при первом запуске
+    from core import SettingsService
+    SettingsService.initialize_from_env()
 
     # Удаляем webhook и запускаем long polling
     await bot.delete_webhook(drop_pending_updates=True)
