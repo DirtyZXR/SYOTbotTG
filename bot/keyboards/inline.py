@@ -136,7 +136,6 @@ def get_admin_menu_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="👥 Список пользователей", callback_data="admin_users")],
         [InlineKeyboardButton(text="👨‍💼 Управление админами", callback_data="admin_manage_admins")],
         [InlineKeyboardButton(text="🔑 Сменить секретный код", callback_data="admin_change_code")],
-        [InlineKeyboardButton(text="📚 Сканировать документы", callback_data="admin_load_docs")],
         [InlineKeyboardButton(text="📝 Сканировать тесты", callback_data="admin_load_tests")],
         [InlineKeyboardButton(text="🔙 В главное меню", callback_data="back_to_menu")],
     ]

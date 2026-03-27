@@ -174,17 +174,6 @@ async def cmd_setcode(message: Message):
                        f"❗️ Для постоянного изменения обновите файл .env")
 
 
-@dp.message(Command("load_docs"))
-async def cmd_load_docs(message: Message):
-    """Загрузить документы из папки"""
-    if not AuthService.is_admin(message.from_user.id):
-        await message.answer("❌ У вас нет прав администратора")
-        return
-
-    count = DocumentService.scan_documents_folder()
-    await message.answer(f"📚 Добавлено документов: {count}")
-
-
 @dp.message(Command("load_tests"))
 async def cmd_load_tests(message: Message):
     """Загрузить тесты из папки"""
@@ -843,31 +832,6 @@ async def process_new_code(message: Message, state: FSMContext):
         parse_mode=ParseMode.HTML,
         reply_markup=get_admin_menu_keyboard(),
     )
-
-
-@dp.callback_query(lambda c: c.data == "admin_load_docs")
-async def callback_admin_load_docs(callback: CallbackQuery):
-    """Сканировать документы из папки"""
-    if not AuthService.is_admin(callback.from_user.id):
-        await callback.answer("❌ У вас нет прав администратора", show_alert=True)
-        return
-
-    count = DocumentService.scan_documents_folder()
-    explanation = (
-        "📚 <b>Сканирование документов завершено!</b>\n\n"
-        "Добавлено документов в базу данных: {}\n\n"
-        "<b>Что это делает:</b>\n"
-        "• Сканирует папку data/documents\n"
-        "• Находит все файлы и создаёт записи в БД\n"
-        "• Позволяет пользователям скачивать документы через бота"
-    ).format(count)
-
-    await callback.message.edit_text(
-        explanation,
-        parse_mode=ParseMode.HTML,
-        reply_markup=get_admin_menu_keyboard(),
-    )
-    await callback.answer(f"📚 Добавлено документов: {count}")
 
 
 @dp.callback_query(lambda c: c.data == "admin_load_tests")
