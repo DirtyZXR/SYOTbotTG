@@ -64,7 +64,7 @@ class SettingsService:
             # Создаем первого админа
             user_repo.create_user(
                 telegram_id=super_admin_id,
-                email=f"admin@intellektika.ru",
+                email=f"admin@intellectika.ru",
                 full_name="Super Admin",
                 username="superadmin",
             )
@@ -75,11 +75,15 @@ class SettingsService:
             logger.info(f"First admin created in database (ID: {super_admin_id})")
         else:
             if not existing_admin.is_admin:
-                logger.info(f"Assigning admin rights to user from .env (ID: {super_admin_id})...")
+                logger.info(
+                    f"Assigning admin rights to user from .env (ID: {super_admin_id})..."
+                )
                 user_repo.set_admin(existing_admin, is_admin=True)
                 logger.info(f"Admin rights assigned (ID: {super_admin_id})")
             else:
-                logger.info(f"User from .env is already an admin (ID: {super_admin_id})")
+                logger.info(
+                    f"User from .env is already an admin (ID: {super_admin_id})"
+                )
 
         db.close()
 

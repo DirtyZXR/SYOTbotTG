@@ -27,20 +27,23 @@ from bot.keyboards import (
     get_admin_menu_keyboard,
     get_cancel_operation_keyboard,
     get_manage_admins_keyboard,
+    get_user_search_results_keyboard,
+    get_admin_user_keyboard,
+    get_profile_keyboard,
 )
-from bot.states import RegistrationForm, FileBrowserState, AdminState
+from bot.states import RegistrationForm, FileBrowserState, AdminState, ProfileState
 from database import init_db
 from utils import logger
 
 # Инициализация бота
 bot = Bot(
-    token=settings.bot_token,
-    default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+    token=settings.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML)
 )
 dp = Dispatcher(storage=MemoryStorage())
 
 
 # ==================== Command Handlers ====================
+
 
 @dp.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext):
@@ -52,17 +55,16 @@ async def cmd_start(message: Message, state: FSMContext):
 
     if AuthService.is_authorized(user_id):
         await message.answer(
-            "👋 Добро пожаловать!\n\n"
-            "Выберите действие:",
+            "👋 Добро пожаловать!\n\nВыберите действие:",
             reply_markup=get_main_menu_keyboard(user_id),
         )
     else:
         # Начинаем пошаговую регистрацию
-        await state.set_state(RegistrationForm.waiting_for_email)
+        await state.set_state(RegistrationForm.waiting_for_full_name)
         await message.answer(
             "🔐 Регистрация в системе\n\n"
-            "Шаг 1/2: Введите ваш корпоративный email\n\n"
-            "Пример: ivanov@intellektika.ru",
+            "Шаг 1/3: Введите ваше ФИО\n\n"
+            "Например: Иванов Иван Иванович",
             reply_markup=get_cancel_keyboard(),
         )
 
@@ -91,24 +93,38 @@ async def cmd_cancel(message: Message, state: FSMContext):
         return
 
     # Если это админская операция
-    if current_state == AdminState.changing_code:
+    if current_state in (
+        AdminState.changing_code,
+        AdminState.searching_users,
+        AdminState.editing_user_full_name,
+        AdminState.editing_user_email,
+    ):
         if AuthService.is_admin(message.from_user.id):
             await state.clear()
             await message.answer(
-                "🔧 <b>Меню администратора:</b>\n\n"
-                "Доступные действия:",
+                "🔧 <b>Меню администратора:</b>\n\nДоступные действия:",
                 parse_mode=ParseMode.HTML,
                 reply_markup=get_admin_menu_keyboard(),
             )
         else:
             await message.answer("❌ У вас нет прав администратора")
             await state.clear()
+    # Если это редактирование профиля
+    elif current_state in (
+        ProfileState.editing_full_name,
+        ProfileState.editing_email,
+    ):
+        await state.clear()
+        await message.answer("❌ Редактирование отменено.")
     # Если это регистрация
-    elif current_state == RegistrationForm.waiting_for_email or current_state == RegistrationForm.waiting_for_code:
+    elif current_state in (
+        RegistrationForm.waiting_for_email,
+        RegistrationForm.waiting_for_full_name,
+        RegistrationForm.waiting_for_code,
+    ):
         await state.clear()
         await message.answer(
-            "❌ Регистрация отменена.\n\n"
-            "Для начала регистрации нажмите /start"
+            "❌ Регистрация отменена.\n\nДля начала регистрации нажмите /start"
         )
     # Другие состояния
     else:
@@ -117,6 +133,7 @@ async def cmd_cancel(message: Message, state: FSMContext):
 
 
 # ==================== Admin Commands ====================
+
 
 @dp.message(Command("admin"))
 async def cmd_admin(message: Message, state: FSMContext):
@@ -162,16 +179,17 @@ async def cmd_setcode(message: Message):
     args = message.text.split(maxsplit=1)
     if len(args) < 2:
         await message.answer(
-            "❌ Неверный формат команды\n\n"
-            "Используйте: /setcode [новый код]"
+            "❌ Неверный формат команды\n\nИспользуйте: /setcode [новый код]"
         )
         return
 
     # Обновляем код (это упрощённая версия, в реальном приложении нужно обновлять в БД)
     # Сейчас мы просто сообщаем об изменении
     new_code = args[1].strip()
-    await message.answer(f"⚠️ Код безопасности изменён на: {new_code}\n\n"
-                       f"❗️ Для постоянного изменения обновите файл .env")
+    await message.answer(
+        f"⚠️ Код безопасности изменён на: {new_code}\n\n"
+        f"❗️ Для постоянного изменения обновите файл .env"
+    )
 
 
 @dp.message(Command("load_tests"))
@@ -191,6 +209,33 @@ async def cmd_load_tests(message: Message):
 
 # ==================== Registration Handlers ====================
 
+
+@dp.message(StateFilter(RegistrationForm.waiting_for_full_name))
+async def process_full_name(message: Message, state: FSMContext):
+    """Обработчик ввода ФИО"""
+    full_name = message.text.strip()
+
+    if not full_name:
+        await message.answer("❌ ФИО не может быть пустым. Попробуйте ещё раз.")
+        return
+
+    words = full_name.split()
+    if len(words) != 3:
+        await message.answer(
+            "❌ ФИО должно состоять из 3 слов: Фамилия Имя Отчество\n\n"
+            'Попробуйте ещё раз или нажмите "Отмена"'
+        )
+        return
+
+    # Сохраняем ФИО в состоянии FSM
+    await state.update_data(full_name=full_name)
+    await state.set_state(RegistrationForm.waiting_for_email)
+    await message.answer(
+        f"✅ ФИО принято: {full_name}\n\nШаг 2/3: Введите ваш корпоративный email",
+        reply_markup=get_cancel_keyboard(),
+    )
+
+
 @dp.message(StateFilter(RegistrationForm.waiting_for_email))
 async def process_email(message: Message, state: FSMContext):
     """Обработчик ввода email"""
@@ -205,12 +250,12 @@ async def process_email(message: Message, state: FSMContext):
         await state.set_state(RegistrationForm.waiting_for_code)
         await message.answer(
             "✅ Email принят!\n\n"
-            "Шаг 2/2: Введите код безопасности\n\n"
+            "Шаг 3/3: Введите код безопасности\n\n"
             "Код вы должны получить от администратора",
             reply_markup=get_cancel_keyboard(),
         )
     else:
-        await message.answer(f"❌ {msg}\n\nПопробуйте ещё раз или нажмите \"Отмена\"")
+        await message.answer(f'❌ {msg}\n\nПопробуйте ещё раз или нажмите "Отмена"')
 
 
 @dp.message(StateFilter(RegistrationForm.waiting_for_code))
@@ -218,9 +263,10 @@ async def process_code(message: Message, state: FSMContext):
     """Обработчик ввода кода безопасности"""
     code = message.text.strip()
 
-    # Получаем email из состояния FSM
+    # Получаем данные из состояния FSM
     data = await state.get_data()
     email = data.get("email")
+    full_name = data.get("full_name")
 
     if not email:
         await state.clear()
@@ -234,20 +280,18 @@ async def process_code(message: Message, state: FSMContext):
         telegram_id=message.from_user.id,
         email=email,
         code=code,
-        full_name=message.from_user.full_name,
+        full_name=full_name,
         username=message.from_user.username,
     )
 
     if success:
         await state.clear()
         await message.answer(
-            f"✅ {msg}\n\n"
-            "👋 Добро пожаловать!\n\n"
-            "Выберите действие:",
+            f"✅ {msg}\n\n👋 Добро пожаловать!\n\nВыберите действие:",
             reply_markup=get_main_menu_keyboard(message.from_user.id),
         )
     else:
-        await message.answer(f"❌ {msg}\n\nПопробуйте ещё раз или нажмите \"Отмена\"")
+        await message.answer(f'❌ {msg}\n\nПопробуйте ещё раз или нажмите "Отмена"')
 
 
 @dp.callback_query(lambda c: c.data == "cancel_registration")
@@ -255,8 +299,7 @@ async def callback_cancel_registration(callback: CallbackQuery, state: FSMContex
     """Обработчик отмены регистрации"""
     await state.clear()
     await callback.message.edit_text(
-        "❌ Регистрация отменена.\n\n"
-        "Для начала регистрации нажмите /start"
+        "❌ Регистрация отменена.\n\nДля начала регистрации нажмите /start"
     )
     await callback.answer()
 
@@ -270,8 +313,7 @@ async def callback_cancel_operation(callback: CallbackQuery, state: FSMContext):
 
     await state.clear()
     await callback.message.edit_text(
-        "🔧 <b>Меню администратора:</b>\n\n"
-        "Доступные действия:",
+        "🔧 <b>Меню администратора:</b>\n\nДоступные действия:",
         parse_mode=ParseMode.HTML,
         reply_markup=get_admin_menu_keyboard(),
     )
@@ -279,6 +321,7 @@ async def callback_cancel_operation(callback: CallbackQuery, state: FSMContext):
 
 
 # ==================== Helper Functions ====================
+
 
 async def go_back_to_main_menu(callback: CallbackQuery, state: FSMContext):
     """Функция для возврата в главное меню"""
@@ -295,6 +338,7 @@ async def go_back_to_main_menu(callback: CallbackQuery, state: FSMContext):
 
 # ==================== Callback Handlers ====================
 
+
 @dp.callback_query(lambda c: c.data == "back_to_menu")
 async def callback_back_to_menu(callback: CallbackQuery, state: FSMContext):
     """Возврат в главное меню"""
@@ -307,7 +351,9 @@ async def callback_menu(callback: CallbackQuery, state: FSMContext):
     try:
         # Убираем префикс "menu_" чтобы получить action
         action = callback.data[5:]  # Убираем первые 5 символов "menu_"
-        logger.info(f"Menu action received: {action}, User: {callback.from_user.id}, Full data: {callback.data}")
+        logger.info(
+            f"Menu action received: {action}, User: {callback.from_user.id}, Full data: {callback.data}"
+        )
 
         # Проверяем админские права для кнопки админ-панели
         if action == "admin_panel":
@@ -316,21 +362,24 @@ async def callback_menu(callback: CallbackQuery, state: FSMContext):
             logger.info(f"User {callback.from_user.id} is admin: {is_admin}")
 
             if not is_admin:
-                logger.warning(f"Unauthorized admin panel access attempt by user {callback.from_user.id}")
-                await callback.answer("❌ У вас нет прав администратора", show_alert=True)
+                logger.warning(
+                    f"Unauthorized admin panel access attempt by user {callback.from_user.id}"
+                )
+                await callback.answer(
+                    "❌ У вас нет прав администратора", show_alert=True
+                )
                 return
 
             logger.info(f"Showing admin panel to user {callback.from_user.id}")
-            admin_text = (
-                "🔧 <b>Админ-панель:</b>\n\n"
-                "Доступные действия:"
-            )
+            admin_text = "🔧 <b>Админ-панель:</b>\n\nДоступные действия:"
             await callback.message.edit_text(
                 admin_text,
                 parse_mode=ParseMode.HTML,
                 reply_markup=get_admin_menu_keyboard(),
             )
-            logger.info(f"Admin panel shown successfully to user {callback.from_user.id}")
+            logger.info(
+                f"Admin panel shown successfully to user {callback.from_user.id}"
+            )
             await callback.answer()
         elif action == "documents":
             # Используем динамический файловый браузер
@@ -339,17 +388,20 @@ async def callback_menu(callback: CallbackQuery, state: FSMContext):
 
             # Сохраняем начальные данные в FSM
             import hashlib
+
             docs_folder = Path(docs_path)
 
             folders = []
             files = []
 
-            for item in sorted(docs_folder.iterdir(), key=lambda x: (not x.is_dir(), x.name)):
+            for item in sorted(
+                docs_folder.iterdir(), key=lambda x: (not x.is_dir(), x.name)
+            ):
                 if item.is_dir():
-                    name_hash = hashlib.md5(item.name.encode('utf-8')).hexdigest()[:8]
+                    name_hash = hashlib.md5(item.name.encode("utf-8")).hexdigest()[:8]
                     folders.append((name_hash, item.name, str(item)))
                 elif item.is_file():
-                    name_hash = hashlib.md5(item.name.encode('utf-8')).hexdigest()[:8]
+                    name_hash = hashlib.md5(item.name.encode("utf-8")).hexdigest()[:8]
                     files.append((name_hash, item.name, str(item)))
 
             await state.update_data(
@@ -357,7 +409,7 @@ async def callback_menu(callback: CallbackQuery, state: FSMContext):
                 relative_path="",  # Пустой путь = корень documents
                 folders=folders,
                 files=files,
-                root_path=docs_path  # Сохраняем корневой путь для ограничения
+                root_path=docs_path,  # Сохраняем корневой путь для ограничения
             )
 
             await callback.message.edit_text(
@@ -374,7 +426,26 @@ async def callback_menu(callback: CallbackQuery, state: FSMContext):
                 "Функционал тестирования находится в стадии разработки.",
                 parse_mode=ParseMode.HTML,
             )
-            logger.info(f"Tests development message shown to user {callback.from_user.id}")
+            logger.info(
+                f"Tests development message shown to user {callback.from_user.id}"
+            )
+            await callback.answer()
+        elif action == "profile":
+            user = AuthService.get_user(callback.from_user.id)
+            if not user:
+                await callback.answer("❌ Пользователь не найден", show_alert=True)
+                return
+
+            msg = (
+                f"👤 <b>Ваши данные</b>\n\n"
+                f"📋 ФИО: {user.full_name or 'Не указано'}\n"
+                f"📧 Email: {user.email}\n"
+            )
+            await callback.message.edit_text(
+                msg,
+                parse_mode=ParseMode.HTML,
+                reply_markup=get_profile_keyboard(),
+            )
             await callback.answer()
         else:
             logger.warning(f"Unknown menu action: {action}")
@@ -474,6 +545,7 @@ async def callback_answer(callback: CallbackQuery):
 
 # ==================== File Browser Handlers ====================
 
+
 @dp.callback_query(lambda c: c.data.startswith("f_"))
 async def callback_folder(callback: CallbackQuery, state: FSMContext):
     """Обработчик выбора папки (f_xxxxxxxx - хеш имени папки)"""
@@ -510,15 +582,16 @@ async def callback_folder(callback: CallbackQuery, state: FSMContext):
 
     # Получаем содержимое новой папки
     import hashlib
+
     new_folders = []
     new_files = []
 
     for item in sorted(folder.iterdir(), key=lambda x: (not x.is_dir(), x.name)):
         if item.is_dir():
-            name_hash = hashlib.md5(item.name.encode('utf-8')).hexdigest()[:8]
+            name_hash = hashlib.md5(item.name.encode("utf-8")).hexdigest()[:8]
             new_folders.append((name_hash, item.name, str(item)))
         elif item.is_file():
-            name_hash = hashlib.md5(item.name.encode('utf-8')).hexdigest()[:8]
+            name_hash = hashlib.md5(item.name.encode("utf-8")).hexdigest()[:8]
             new_files.append((name_hash, item.name, str(item)))
 
     # Обновляем состояние
@@ -526,7 +599,7 @@ async def callback_folder(callback: CallbackQuery, state: FSMContext):
         current_path=folder_path,
         relative_path=new_relative,
         folders=new_folders,
-        files=new_files
+        files=new_files,
     )
 
     await callback.message.edit_text(
@@ -565,7 +638,11 @@ async def callback_file(callback: CallbackQuery, state: FSMContext):
     try:
         # Сокращаем имя файла для caption (максимум 50 символов)
         max_name_length = 50
-        display_name = file_name if len(file_name) <= max_name_length else file_name[:max_name_length] + "..."
+        display_name = (
+            file_name
+            if len(file_name) <= max_name_length
+            else file_name[:max_name_length] + "..."
+        )
 
         # Используем FSInputFile для локальных файлов (aiogram 3.x)
         document_file = FSInputFile(file_obj)
@@ -598,7 +675,11 @@ async def callback_back_folder(callback: CallbackQuery, state: FSMContext):
     # Если мы не в корне - возвращаемся на уровень выше
     if relative_path:
         parent_path = current_obj.parent
-        parent_relative = str(Path(relative_path).parent) if Path(relative_path).parent != Path(".") else ""
+        parent_relative = (
+            str(Path(relative_path).parent)
+            if Path(relative_path).parent != Path(".")
+            else ""
+        )
 
         # Проверяем, что не вышли выше корня
         if parent_path == root_path:
@@ -608,22 +689,25 @@ async def callback_back_folder(callback: CallbackQuery, state: FSMContext):
         parent_name = parent_path.name
 
         import hashlib
+
         new_folders = []
         new_files = []
 
-        for item in sorted(parent_path.iterdir(), key=lambda x: (not x.is_dir(), x.name)):
+        for item in sorted(
+            parent_path.iterdir(), key=lambda x: (not x.is_dir(), x.name)
+        ):
             if item.is_dir():
-                name_hash = hashlib.md5(item.name.encode('utf-8')).hexdigest()[:8]
+                name_hash = hashlib.md5(item.name.encode("utf-8")).hexdigest()[:8]
                 new_folders.append((name_hash, item.name, str(item)))
             elif item.is_file():
-                name_hash = hashlib.md5(item.name.encode('utf-8')).hexdigest()[:8]
+                name_hash = hashlib.md5(item.name.encode("utf-8")).hexdigest()[:8]
                 new_files.append((name_hash, item.name, str(item)))
 
         await state.update_data(
             current_path=str(parent_path),
             relative_path=parent_relative,
             folders=new_folders,
-            files=new_files
+            files=new_files,
         )
 
         await callback.message.edit_text(
@@ -637,25 +721,342 @@ async def callback_back_folder(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-# ==================== Admin Callback Handlers ====================
+# ==================== Profile Handlers ====================
 
-@dp.callback_query(lambda c: c.data == "admin_users")
-async def callback_admin_users(callback: CallbackQuery):
-    """Список пользователей"""
-    if not AuthService.is_admin(callback.from_user.id):
-        await callback.answer("❌ У вас нет прав администратора", show_alert=True)
+
+@dp.callback_query(lambda c: c.data == "profile_edit_name")
+async def callback_profile_edit_name(callback: CallbackQuery, state: FSMContext):
+    """Начало редактирования своего ФИО"""
+    user = AuthService.get_user(callback.from_user.id)
+    if not user:
+        await callback.answer("❌ Пользователь не найден", show_alert=True)
+        return
+
+    await state.set_state(ProfileState.editing_full_name)
+    await callback.message.edit_text(
+        f"✏️ <b>Изменение ФИО</b>\n\n"
+        f"Текущее ФИО: {user.full_name or 'Не указано'}\n\n"
+        f"Введите новое ФИО (3 слова: Фамилия Имя Отчество):",
+        parse_mode=ParseMode.HTML,
+        reply_markup=get_cancel_operation_keyboard(),
+    )
+    await callback.answer()
+
+
+@dp.message(StateFilter(ProfileState.editing_full_name))
+async def process_profile_edit_name(message: Message, state: FSMContext):
+    """Обработчик ввода нового ФИО (пользователь)"""
+    full_name = message.text.strip()
+
+    if not full_name:
+        await message.answer("❌ ФИО не может быть пустым. Попробуйте ещё раз.")
+        return
+
+    words = full_name.split()
+    if len(words) != 3:
+        await message.answer(
+            "❌ ФИО должно состоять из 3 слов: Фамилия Имя Отчество\n\n"
+            'Попробуйте ещё раз или нажмите "Отмена"'
+        )
         return
 
     from database import UserRepository, SessionLocal
 
     db = SessionLocal()
     user_repo = UserRepository(db)
-    users = user_repo.get_all_users()
+    user = user_repo.get_by_telegram_id(message.from_user.id)
+
+    if not user:
+        db.close()
+        await state.clear()
+        await message.answer("❌ Пользователь не найден.")
+        return
+
+    user_repo.update_full_name(user, full_name)
+    db.close()
+    await state.clear()
+
+    await message.answer(
+        f"✅ ФИО обновлено: {full_name}",
+        reply_markup=get_main_menu_keyboard(message.from_user.id),
+    )
+
+
+@dp.callback_query(lambda c: c.data == "profile_edit_email")
+async def callback_profile_edit_email(callback: CallbackQuery, state: FSMContext):
+    """Начало редактирования своего email"""
+    user = AuthService.get_user(callback.from_user.id)
+    if not user:
+        await callback.answer("❌ Пользователь не найден", show_alert=True)
+        return
+
+    await state.set_state(ProfileState.editing_email)
+    await callback.message.edit_text(
+        f"📧 <b>Изменение email</b>\n\n"
+        f"Текущий email: {user.email}\n\n"
+        f"Введите новый email:",
+        parse_mode=ParseMode.HTML,
+        reply_markup=get_cancel_operation_keyboard(),
+    )
+    await callback.answer()
+
+
+@dp.message(StateFilter(ProfileState.editing_email))
+async def process_profile_edit_email(message: Message, state: FSMContext):
+    """Обработчик ввода нового email (пользователь)"""
+    email = message.text.strip()
+
+    # Проверяем валидность email (домен + уникальность)
+    success, msg = AuthService.validate_email(email)
+    if not success:
+        await message.answer(f"❌ {msg}\n\nПопробуйте ещё раз.")
+        return
+
+    from database import UserRepository, SessionLocal
+
+    db = SessionLocal()
+    user_repo = UserRepository(db)
+    user = user_repo.get_by_telegram_id(message.from_user.id)
+
+    if not user:
+        db.close()
+        await state.clear()
+        await message.answer("❌ Пользователь не найден.")
+        return
+
+    user_repo.update_email(user, email)
+    db.close()
+    await state.clear()
+
+    await message.answer(
+        f"✅ Email обновлён: {email}",
+        reply_markup=get_main_menu_keyboard(message.from_user.id),
+    )
+
+
+# ==================== Admin Callback Handlers ====================
+
+
+@dp.callback_query(lambda c: c.data == "admin_search_users")
+async def callback_admin_search_users(callback: CallbackQuery, state: FSMContext):
+    """Поиск пользователей — запрос поискового запроса"""
+    if not AuthService.is_admin(callback.from_user.id):
+        await callback.answer("❌ У вас нет прав администратора", show_alert=True)
+        return
+
+    await state.set_state(AdminState.searching_users)
+    await callback.message.edit_text(
+        "🔍 <b>Поиск пользователей</b>\n\nВведите имя или email для поиска:",
+        parse_mode=ParseMode.HTML,
+        reply_markup=get_cancel_operation_keyboard(),
+    )
+    await callback.answer()
+
+
+@dp.message(StateFilter(AdminState.searching_users))
+async def process_admin_search_users(message: Message, state: FSMContext):
+    """Обработчик поискового запроса пользователей"""
+    if not AuthService.is_admin(message.from_user.id):
+        await state.clear()
+        await message.answer("❌ У вас нет прав администратора")
+        return
+
+    query = message.text.strip()
+
+    from database import UserRepository, SessionLocal
+
+    db = SessionLocal()
+    user_repo = UserRepository(db)
+    users = user_repo.search_users(query)
     db.close()
 
-    msg = NotificationService.format_admin_user_list(users)
-    await callback.message.edit_text(msg, parse_mode=ParseMode.HTML)
+    await state.clear()
+
+    if not users:
+        await message.answer(
+            f"🔍 По запросу «{query}» ничего не найдено.\n\n",
+            reply_markup=get_admin_menu_keyboard(),
+        )
+        return
+
+    msg = f"🔍 Найдено пользователей: {len(users)}\n\n"
+    for user in users:
+        status = "✅ Верифицирован" if user.is_verified else "⏳ Ожидает"
+        admin_badge = " 👨‍💼" if user.is_admin else ""
+        msg += (
+            f"👤 {user.full_name or 'Не указано'}{admin_badge}\n"
+            f"📧 {user.email}\n"
+            f"📌 {status}\n\n"
+        )
+
+    await message.answer(
+        msg,
+        parse_mode=ParseMode.HTML,
+        reply_markup=get_user_search_results_keyboard(users),
+    )
+
+
+@dp.callback_query(lambda c: c.data.startswith("admin_user_"))
+async def callback_admin_user(callback: CallbackQuery):
+    """Просмотр профиля пользователя (админ)"""
+    if not AuthService.is_admin(callback.from_user.id):
+        await callback.answer("❌ У вас нет прав администратора", show_alert=True)
+        return
+
+    user_id = int(callback.data.split("_")[-1])
+
+    from database import UserRepository, SessionLocal
+
+    db = SessionLocal()
+    user_repo = UserRepository(db)
+    user = user_repo.get_by_id(user_id)
+    db.close()
+
+    if not user:
+        await callback.answer("❌ Пользователь не найден", show_alert=True)
+        return
+
+    status = "✅ Верифицирован" if user.is_verified else "⏳ Ожидает верификации"
+    admin_badge = "\n👨‍💼 Администратор" if user.is_admin else ""
+    msg = (
+        f"👤 <b>Профиль пользователя</b>\n\n"
+        f"📋 ФИО: {user.full_name or 'Не указано'}\n"
+        f"📧 Email: {user.email}\n"
+        f"📱 Telegram: @{user.username or 'Нет username'}\n"
+        f"📅 Дата регистрации: {user.created_at.strftime('%d.%m.%Y')}\n"
+        f"📌 {status}{admin_badge}"
+    )
+
+    await callback.message.edit_text(
+        msg,
+        parse_mode=ParseMode.HTML,
+        reply_markup=get_admin_user_keyboard(user.id),
+    )
     await callback.answer()
+
+
+@dp.callback_query(lambda c: c.data.startswith("admin_edit_name_"))
+async def callback_admin_edit_name(callback: CallbackQuery, state: FSMContext):
+    """Начало редактирования ФИО пользователя (админ)"""
+    if not AuthService.is_admin(callback.from_user.id):
+        await callback.answer("❌ У вас нет прав администратора", show_alert=True)
+        return
+
+    user_id = int(callback.data.split("_")[-1])
+    await state.update_data(edit_user_id=user_id)
+    await state.set_state(AdminState.editing_user_full_name)
+
+    await callback.message.edit_text(
+        "✏️ <b>Изменение ФИО</b>\n\nВведите новое ФИО (3 слова: Фамилия Имя Отчество):",
+        parse_mode=ParseMode.HTML,
+        reply_markup=get_cancel_operation_keyboard(),
+    )
+    await callback.answer()
+
+
+@dp.message(StateFilter(AdminState.editing_user_full_name))
+async def process_admin_edit_name(message: Message, state: FSMContext):
+    """Обработчик ввода нового ФИО (админ)"""
+    if not AuthService.is_admin(message.from_user.id):
+        await state.clear()
+        await message.answer("❌ У вас нет прав администратора")
+        return
+
+    full_name = message.text.strip()
+
+    if not full_name:
+        await message.answer("❌ ФИО не может быть пустым. Попробуйте ещё раз.")
+        return
+
+    words = full_name.split()
+    if len(words) != 3:
+        await message.answer(
+            "❌ ФИО должно состоять из 3 слов: Фамилия Имя Отчество\n\n"
+            'Попробуйте ещё раз или нажмите "Отмена"'
+        )
+        return
+
+    data = await state.get_data()
+    user_id = data.get("edit_user_id")
+    await state.clear()
+
+    from database import UserRepository, SessionLocal
+
+    db = SessionLocal()
+    user_repo = UserRepository(db)
+    user = user_repo.get_by_id(user_id)
+
+    if not user:
+        db.close()
+        await message.answer("❌ Пользователь не найден.")
+        return
+
+    user_repo.update_full_name(user, full_name)
+    db.close()
+
+    await message.answer(
+        f"✅ ФИО обновлено: {full_name}",
+        reply_markup=get_admin_menu_keyboard(),
+    )
+
+
+@dp.callback_query(lambda c: c.data.startswith("admin_edit_email_"))
+async def callback_admin_edit_email(callback: CallbackQuery, state: FSMContext):
+    """Начало редактирования email пользователя (админ)"""
+    if not AuthService.is_admin(callback.from_user.id):
+        await callback.answer("❌ У вас нет прав администратора", show_alert=True)
+        return
+
+    user_id = int(callback.data.split("_")[-1])
+    await state.update_data(edit_user_id=user_id)
+    await state.set_state(AdminState.editing_user_email)
+
+    await callback.message.edit_text(
+        "📧 <b>Изменение email</b>\n\nВведите новый email:",
+        parse_mode=ParseMode.HTML,
+        reply_markup=get_cancel_operation_keyboard(),
+    )
+    await callback.answer()
+
+
+@dp.message(StateFilter(AdminState.editing_user_email))
+async def process_admin_edit_email(message: Message, state: FSMContext):
+    """Обработчик ввода нового email (админ)"""
+    if not AuthService.is_admin(message.from_user.id):
+        await state.clear()
+        await message.answer("❌ У вас нет прав администратора")
+        return
+
+    email = message.text.strip()
+
+    # Проверяем валидность email
+    success, msg = AuthService.validate_email(email)
+    if not success:
+        await message.answer(f"❌ {msg}\n\nПопробуйте ещё раз.")
+        return
+
+    data = await state.get_data()
+    user_id = data.get("edit_user_id")
+    await state.clear()
+
+    from database import UserRepository, SessionLocal
+
+    db = SessionLocal()
+    user_repo = UserRepository(db)
+    user = user_repo.get_by_id(user_id)
+
+    if not user:
+        db.close()
+        await message.answer("❌ Пользователь не найден.")
+        return
+
+    user_repo.update_email(user, email)
+    db.close()
+
+    await message.answer(
+        f"✅ Email обновлён: {email}",
+        reply_markup=get_admin_menu_keyboard(),
+    )
 
 
 @dp.callback_query(lambda c: c.data == "admin_manage_admins")
@@ -673,7 +1074,9 @@ async def callback_admin_manage_admins(callback: CallbackQuery):
     db.close()
 
     if not users:
-        await callback.answer("❌ Нет зарегистрированных пользователей", show_alert=True)
+        await callback.answer(
+            "❌ Нет зарегистрированных пользователей", show_alert=True
+        )
         return
 
     await callback.message.edit_text(
@@ -741,7 +1144,9 @@ async def callback_remove_admin(callback: CallbackQuery):
     # Проверяем, что не пытаемся снять права с самого себя
     if user.telegram_id == callback.from_user.id:
         db.close()
-        await callback.answer("❌ Нельзя снять права администратора у самого себя", show_alert=True)
+        await callback.answer(
+            "❌ Нельзя снять права администратора у самого себя", show_alert=True
+        )
         return
 
     user_repo.set_admin(user, is_admin=False)
@@ -749,8 +1154,7 @@ async def callback_remove_admin(callback: CallbackQuery):
     db.close()
 
     await callback.message.edit_text(
-        f"❌ <b>Права администратора сняты!</b>\n\n"
-        f"👤 {user.full_name or user.email}",
+        f"❌ <b>Права администратора сняты!</b>\n\n👤 {user.full_name or user.email}",
         parse_mode=ParseMode.HTML,
         reply_markup=get_manage_admins_keyboard(users),
     )
@@ -761,8 +1165,7 @@ async def callback_remove_admin(callback: CallbackQuery):
 async def callback_back_to_admin_menu(callback: CallbackQuery):
     """Возврат в админское меню"""
     await callback.message.edit_text(
-        "🔧 <b>Меню администратора:</b>\n\n"
-        "Доступные действия:",
+        "🔧 <b>Меню администратора:</b>\n\nДоступные действия:",
         parse_mode=ParseMode.HTML,
         reply_markup=get_admin_menu_keyboard(),
     )
@@ -808,6 +1211,7 @@ async def process_new_code(message: Message, state: FSMContext):
 
     # Сохраняем код в БД
     from core import SettingsService
+
     SettingsService.set_security_code(new_code)
 
     await state.clear()
@@ -839,6 +1243,7 @@ async def callback_admin_load_tests(callback: CallbackQuery):
 
 # ==================== Entry Point ====================
 
+
 async def main():
     """Запуск бота"""
     try:
@@ -850,6 +1255,7 @@ async def main():
         # Инициализируем настройки из .env при первом запуске
         logger.info("Initializing settings from environment...")
         from core import SettingsService
+
         SettingsService.initialize_from_env()
         logger.info("Settings initialized successfully")
 
@@ -865,4 +1271,5 @@ async def main():
 
 if __name__ == "__main__":
     import asyncio
+
     asyncio.run(main())

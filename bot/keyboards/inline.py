@@ -17,7 +17,9 @@ def get_categories_keyboard() -> InlineKeyboardMarkup:
             ]
         )
 
-    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_menu")])
+    buttons.append(
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_menu")]
+    )
 
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -54,7 +56,9 @@ def get_subcategories_keyboard(category: str) -> InlineKeyboardMarkup:
                 ]
             )
 
-    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_menu")])
+    buttons.append(
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_menu")]
+    )
 
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -73,7 +77,9 @@ def get_documents_keyboard(documents: List) -> InlineKeyboardMarkup:
             ]
         )
 
-    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_menu")])
+    buttons.append(
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_menu")]
+    )
 
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -90,7 +96,9 @@ def get_test_groups_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def get_test_answers_keyboard(question_num: int, options: List[str]) -> InlineKeyboardMarkup:
+def get_test_answers_keyboard(
+    question_num: int, options: List[str]
+) -> InlineKeyboardMarkup:
     """Клавиатура с вариантами ответов на вопрос теста"""
     buttons = []
 
@@ -112,11 +120,18 @@ def get_main_menu_keyboard(user_id: Optional[int] = None) -> InlineKeyboardMarku
     buttons = [
         [InlineKeyboardButton(text="📚 Документы", callback_data="menu_documents")],
         [InlineKeyboardButton(text="📝 Тесты", callback_data="menu_tests")],
+        [InlineKeyboardButton(text="✏️ Мои данные", callback_data="menu_profile")],
     ]
 
     # Добавляем кнопку админ-панели только для администраторов
     if user_id and AuthService.is_admin(user_id):
-        buttons.append([InlineKeyboardButton(text="🔧 Админ-панель", callback_data="menu_admin_panel")])
+        buttons.append(
+            [
+                InlineKeyboardButton(
+                    text="🔧 Админ-панель", callback_data="menu_admin_panel"
+                )
+            ]
+        )
 
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -133,10 +148,26 @@ def get_cancel_keyboard() -> InlineKeyboardMarkup:
 def get_admin_menu_keyboard() -> InlineKeyboardMarkup:
     """Клавиатура админского меню"""
     buttons = [
-        [InlineKeyboardButton(text="👥 Список пользователей", callback_data="admin_users")],
-        [InlineKeyboardButton(text="👨‍💼 Управление админами", callback_data="admin_manage_admins")],
-        [InlineKeyboardButton(text="🔑 Сменить секретный код", callback_data="admin_change_code")],
-        [InlineKeyboardButton(text="📝 Сканировать тесты", callback_data="admin_load_tests")],
+        [
+            InlineKeyboardButton(
+                text="🔍 Поиск пользователей", callback_data="admin_search_users"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="👨‍💼 Управление админами", callback_data="admin_manage_admins"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="🔑 Сменить секретный код", callback_data="admin_change_code"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="📝 Сканировать тесты", callback_data="admin_load_tests"
+            )
+        ],
         [InlineKeyboardButton(text="🔙 В главное меню", callback_data="back_to_menu")],
     ]
 
@@ -154,11 +185,17 @@ def get_manage_admins_keyboard(users) -> InlineKeyboardMarkup:
             action = "remove_admin" if user.is_admin else "add_admin"
             button_text = f"{status} {user.full_name or user.email}"
 
-            buttons.append([
-                InlineKeyboardButton(text=button_text, callback_data=f"{action}_{user.id}")
-            ])
+            buttons.append(
+                [
+                    InlineKeyboardButton(
+                        text=button_text, callback_data=f"{action}_{user.id}"
+                    )
+                ]
+            )
 
-    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_admin_menu")])
+    buttons.append(
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_admin_menu")]
+    )
 
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -167,6 +204,71 @@ def get_cancel_operation_keyboard() -> InlineKeyboardMarkup:
     """Клавиатура с кнопкой отмены операции"""
     buttons = [
         [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_operation")]
+    ]
+
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_user_search_results_keyboard(users) -> InlineKeyboardMarkup:
+    """Клавиатура с результатами поиска пользователей"""
+    buttons = []
+
+    for user in users:
+        status = "👨‍💼" if user.is_admin else ("✅" if user.is_verified else "⏳")
+        display = user.full_name or user.email
+        buttons.append(
+            [
+                InlineKeyboardButton(
+                    text=f"{status} {display}",
+                    callback_data=f"admin_user_{user.id}",
+                )
+            ]
+        )
+
+    buttons.append(
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_admin_menu")]
+    )
+
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_admin_user_keyboard(user_id: int) -> InlineKeyboardMarkup:
+    """Клавиатура действий администратора над пользователем"""
+    buttons = [
+        [
+            InlineKeyboardButton(
+                text="✏️ Изменить ФИО", callback_data=f"admin_edit_name_{user_id}"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="📧 Изменить email", callback_data=f"admin_edit_email_{user_id}"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="🔙 К результатам поиска", callback_data="admin_search_users"
+            )
+        ],
+    ]
+
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_profile_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура профиля пользователя"""
+    buttons = [
+        [
+            InlineKeyboardButton(
+                text="✏️ Изменить ФИО", callback_data="profile_edit_name"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="📧 Изменить email", callback_data="profile_edit_email"
+            )
+        ],
+        [InlineKeyboardButton(text="🔙 В главное меню", callback_data="back_to_menu")],
     ]
 
     return InlineKeyboardMarkup(inline_keyboard=buttons)

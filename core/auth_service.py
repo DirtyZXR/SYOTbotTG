@@ -24,7 +24,7 @@ class AuthService:
         Возвращает (success, message)
         """
         # Проверяем, что email с корпоративным доменом
-        allowed_domains = ["intellektika.ru"]  # Пример корпоративного домена
+        allowed_domains = ["intellectika.ru"]  # Пример корпоративного домена
         if not any(email.endswith(f"@{domain}") for domain in allowed_domains):
             return False, "Email должен быть с корпоративного домена"
 
@@ -54,7 +54,7 @@ class AuthService:
         user_repo = UserRepository(db)
 
         # Проверяем, что email с корпоративным доменом
-        allowed_domains = ["intellektika.ru"]  # Пример корпоративного домена
+        allowed_domains = ["intellectika.ru"]  # Пример корпоративного домена
         if not any(email.endswith(f"@{domain}") for domain in allowed_domains):
             db.close()
             return False, "Email должен быть с корпоративного домена"
@@ -132,7 +132,7 @@ class AuthService:
             return False, "Неверный код безопасности"
 
         # Проверяем, что email с корпоративным доменом
-        allowed_domains = ["intellektika.ru"]
+        allowed_domains = ["intellectika.ru"]
         if not any(email.endswith(f"@{domain}") for domain in allowed_domains):
             db.close()
             return False, "Email должен быть с корпоративного домена"

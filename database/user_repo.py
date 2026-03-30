@@ -1,4 +1,5 @@
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from models.user import User
 from typing import Optional, List
 
@@ -72,3 +73,31 @@ class UserRepository:
         if user and user.is_admin:
             return True
         return False
+
+    def search_users(self, query: str) -> List[User]:
+        """Поиск пользователей по ФИО или email (без учёта регистра)"""
+        search_pattern = f"%{query}%"
+        return (
+            self.db.query(User)
+            .filter(
+                or_(
+                    User.full_name.ilike(search_pattern),
+                    User.email.ilike(search_pattern),
+                )
+            )
+            .all()
+        )
+
+    def update_full_name(self, user: User, full_name: str) -> User:
+        """Обновление ФИО пользователя"""
+        user.full_name = full_name
+        self.db.commit()
+        self.db.refresh(user)
+        return user
+
+    def update_email(self, user: User, email: str) -> User:
+        """Обновление email пользователя"""
+        user.email = email
+        self.db.commit()
+        self.db.refresh(user)
+        return user
