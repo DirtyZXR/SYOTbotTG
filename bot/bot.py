@@ -428,21 +428,27 @@ async def go_back_to_main_menu(callback: CallbackQuery, state: FSMContext):
 
 
 async def show_question(callback: CallbackQuery, state: FSMContext):
-    """Helper function to show the current test question."""
+    """Helper function to show the current test question with numbered options."""
     data = await state.get_data()
     questions = data.get("test_questions", [])
     current_index = data.get("test_current", 0)
 
     if current_index >= len(questions):
-        # This case should be handled by the answer handler, but as a fallback:
         await callback.message.edit_text("Тест завершен!")
         await state.clear()
         return
 
     question = questions[current_index]
+
+    # Формируем текст с вариантами ответов
+    options_text = ""
+    for i, option in enumerate(question["options"]):
+        options_text += f"{i + 1}. {option}\n"
+
     question_text = (
         f"📝 <b>Вопрос {current_index + 1}/{len(questions)}</b>\n\n"
-        f"{question['question']}"
+        f"{question['question']}\n\n"
+        f"<b>Варианты ответа:</b>\n{options_text}"
     )
 
     await callback.message.edit_text(

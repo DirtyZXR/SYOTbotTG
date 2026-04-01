@@ -107,19 +107,20 @@ def get_test_groups_keyboard(user) -> InlineKeyboardMarkup:
 def get_test_answers_keyboard(
     question_num: int, options: List[str]
 ) -> InlineKeyboardMarkup:
-    """Клавиатура с вариантами ответов на вопрос теста"""
+    """Клавиатура с вариантами ответов (только номера)"""
     buttons = []
-
-    for idx, option in enumerate(options, 1):
-        buttons.append(
-            [
-                InlineKeyboardButton(
-                    text=f"{idx}. {option}",
-                    callback_data=f"answer_{question_num}_{idx}",
-                )
-            ]
+    row = []
+    for idx, option in enumerate(options):
+        row.append(
+            InlineKeyboardButton(
+                text=str(idx + 1), callback_data=f"answer_{question_num}_{idx + 1}"
+            )
         )
-
+    buttons.append(row)
+    # Добавляем кнопку отмены теста отдельной строкой
+    buttons.append(
+        [InlineKeyboardButton(text="❌ Прервать тест", callback_data="test_cancel")]
+    )
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
