@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, Float, DateTime, ForeignKey
 from sqlalchemy.sql import func
-from database.session import Base
+from database import Base
 
 
 class TestResult(Base):

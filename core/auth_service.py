@@ -1,8 +1,7 @@
-from typing import Optional
 from database import SessionLocal, UserRepository
 from config import settings
 from models.user import User
-from .settings_service import SettingsService
+from utils import logger
 
 
 class AuthService:
@@ -12,23 +11,17 @@ class AuthService:
         pass
 
     @staticmethod
-    def get_security_code() -> str:
-        """Получение секретного кода (из БД)"""
-        code = SettingsService.get_security_code()
-        return code if code else settings.security_code
-
-    @staticmethod
     def validate_email(email: str) -> tuple[bool, str]:
         """
         Проверка валидности email (формат и домен)
-        Возвращает (success, message)
+        Returns (success, message)
         """
-        # Проверяем, что email с корпоративным доменом
+        # Check corporate domain
         allowed_domains = ["intellectika.ru"]
         if not any(email.endswith(f"@{domain}") for domain in allowed_domains):
             return False, "Email должен быть с корпоративного домена"
 
-        # Проверяем, не занят ли email другим пользователем
+        # Check email uniqueness
         db = SessionLocal()
         user_repo = UserRepository(db)
         existing_user = user_repo.get_by_email(email)
@@ -48,31 +41,31 @@ class AuthService:
         company: Optional[str] = None,
     ) -> tuple[bool, str]:
         """
-        Регистрация пользователя (создаёт запись с is_pending=True)
-        Возвращает (success, message)
+        Register a user (creates with is_pending=True)
+        Returns (success, message)
         """
         db = SessionLocal()
         user_repo = UserRepository(db)
 
-        # Проверяем, что email с корпоративным доменом
+        # Check corporate domain
         allowed_domains = ["intellectika.ru"]
         if not any(email.endswith(f"@{domain}") for domain in allowed_domains):
             db.close()
-            return False, "Email должен быть с корпоративного домена"
+            return False, "Email должен быть с корпоративным домена"
 
-        # Проверяем, не зарегистрирован ли уже пользователь с этим email
+        # Check email uniqueness
         existing_user = user_repo.get_by_email(email)
         if existing_user:
             db.close()
-            return False, "Пользователь с таким email уже зарегистрирован"
+            return False, "User with this email already registered"
 
-        # Проверяем, не зарегистрирован ли уже этот telegram_id
+        # Check telegram_id uniqueness
         existing_telegram = user_repo.get_by_telegram_id(telegram_id)
         if existing_telegram:
             db.close()
-            return False, "Вы уже зарегистрированы в системе"
+            return False, "You already registered"
 
-        # Создаём пользователя со статусом pending
+        # Create with pending status
         user = user_repo.create_user(
             telegram_id=telegram_id,
             email=email,
@@ -82,11 +75,11 @@ class AuthService:
             company=company,
         )
         db.close()
-        return True, "Заявка отправлена"
+        return True, "Application submitted"
 
     @staticmethod
     def is_authorized(telegram_id: int) -> bool:
-        """Проверка авторизации пользователя (существует в БД и подтверждён админом)"""
+        """Check if user is authorized (exists in DB and confirmed by admin)"""
         db = SessionLocal()
         user_repo = UserRepository(db)
 
@@ -98,7 +91,7 @@ class AuthService:
 
     @staticmethod
     def is_pending(telegram_id: int) -> bool:
-        """Проверка, ожидает ли пользователь подтверждения"""
+        """Check if user is pending confirmation"""
         db = SessionLocal()
         user_repo = UserRepository(db)
 
@@ -110,7 +103,7 @@ class AuthService:
 
     @staticmethod
     def get_user(telegram_id: int) -> Optional[User]:
-        """Получение пользователя"""
+        """Get user"""
         db = SessionLocal()
         user_repo = UserRepository(db)
 
@@ -120,7 +113,7 @@ class AuthService:
 
     @staticmethod
     def is_admin(telegram_id: int) -> bool:
-        """Проверка админских прав пользователя"""
+        """Check if user is admin"""
         db = SessionLocal()
         user_repo = UserRepository(db)
 

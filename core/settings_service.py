@@ -1,4 +1,4 @@
-from database import SessionLocal, SettingsRepository
+from database import SessionLocal, UserRepository
 from config import settings
 from utils import logger
 from typing import Optional
@@ -9,23 +9,6 @@ class SettingsService:
 
     def __init__(self):
         pass
-
-    @staticmethod
-    def get_security_code() -> Optional[str]:
-        """Получение секретного кода"""
-        db = SessionLocal()
-        settings_repo = SettingsRepository(db)
-        code = settings_repo.get_value("security_code")
-        db.close()
-        return code
-
-    @staticmethod
-    def set_security_code(code: str) -> None:
-        """Установка секретного кода"""
-        db = SessionLocal()
-        settings_repo = SettingsRepository(db)
-        settings_repo.set_value("security_code", code)
-        db.close()
 
     @staticmethod
     def get_admin_ids() -> list:
@@ -39,21 +22,9 @@ class SettingsService:
 
     @staticmethod
     def initialize_from_env():
-        """Инициализация настроек из .env при первом запуске"""
-        from database import SessionLocal, SettingsRepository
-        from database.user_repo import UserRepository
-
+        """Инициализация при первом запуске"""
         db = SessionLocal()
-        settings_repo = SettingsRepository(db)
         user_repo = UserRepository(db)
-
-        # Проверяем и инициализируем секретный код
-        if not settings_repo.exists("security_code"):
-            logger.info("Initializing security code from .env...")
-            settings_repo.set_value("security_code", settings.security_code)
-            logger.info("Security code saved to database")
-        else:
-            logger.info("Security code already exists in database")
 
         # Проверяем первого админа из .env
         super_admin_id = settings.admin_id
@@ -61,7 +32,6 @@ class SettingsService:
 
         if not existing_admin:
             logger.info(f"Creating first admin from .env (ID: {super_admin_id})...")
-            # Создаем первого админа
             user_repo.create_user(
                 telegram_id=super_admin_id,
                 email=f"admin@intellectika.ru",
@@ -69,7 +39,6 @@ class SettingsService:
                 username="superadmin",
                 is_pending=False,
             )
-            # Делаем админом
             created_user = user_repo.get_by_telegram_id(super_admin_id)
             user_repo.set_admin(created_user, is_admin=True)
             logger.info(f"First admin created in database (ID: {super_admin_id})")
@@ -86,7 +55,3 @@ class SettingsService:
                 )
 
         db.close()
-
-
-# Добавляем импорт UserRepository в конец файла
-from database import UserRepository

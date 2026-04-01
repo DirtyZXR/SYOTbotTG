@@ -1,6 +1,6 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from typing import List, Optional
-from config import DOCUMENT_CATEGORIES
+from config import DOCUMENT_CATEGORIES, settings
 from core import AuthService
 
 
@@ -119,11 +119,24 @@ def get_main_menu_keyboard(user_id: Optional[int] = None) -> InlineKeyboardMarku
     """Главное меню"""
     buttons = [
         [InlineKeyboardButton(text="📚 Документы", callback_data="menu_documents")],
-        [InlineKeyboardButton(text="📝 Тесты", callback_data="menu_tests")],
-        [InlineKeyboardButton(text="✏️ Мои данные", callback_data="menu_profile")],
     ]
 
-    # Добавляем кнопку админ-панели только для администраторов
+    # Для Консалтинга — только документы, остальные функции недоступны
+    is_consulting = False
+    if user_id:
+        user = AuthService.get_user(user_id)
+        if user and user.company == "consulting":
+            is_consulting = True
+
+    if not is_consulting:
+        buttons.append(
+            [InlineKeyboardButton(text="📝 Тесты", callback_data="menu_tests")]
+        )
+        buttons.append(
+            [InlineKeyboardButton(text="✏️ Мои данные", callback_data="menu_profile")]
+        )
+
+    # Админ-панель — для всех администраторов
     if user_id and AuthService.is_admin(user_id):
         buttons.append(
             [
@@ -175,11 +188,6 @@ def get_admin_menu_keyboard() -> InlineKeyboardMarkup:
         [
             InlineKeyboardButton(
                 text="👨‍💼 Управление админами", callback_data="admin_manage_admins"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                text="🔑 Сменить секретный код", callback_data="admin_change_code"
             )
         ],
         [
@@ -348,38 +356,40 @@ def get_profile_keyboard() -> InlineKeyboardMarkup:
 
 def get_admin_company_keyboard(user_id: int) -> InlineKeyboardMarkup:
     """Клавиатура выбора компании для администратора"""
-    buttons = [
-        [
-            InlineKeyboardButton(
-                text="Компания 1",
-                callback_data=f"admin_set_company_company1_{user_id}",
-            ),
-        ],
-        [
-            InlineKeyboardButton(
-                text="Компания 2",
-                callback_data=f"admin_set_company_company2_{user_id}",
-            ),
-        ],
+    buttons = []
+    for key, name in settings.COMPANY_FULL_NAMES.items():
+        buttons.append(
+            [
+                InlineKeyboardButton(
+                    text=name,
+                    callback_data=f"admin_set_company_{key}_{user_id}",
+                )
+            ]
+        )
+    buttons.append(
         [
             InlineKeyboardButton(
                 text="❌ Убрать компанию",
                 callback_data=f"admin_set_company_none_{user_id}",
-            ),
-        ],
+            )
+        ]
+    )
+    buttons.append(
         [
             InlineKeyboardButton(
-                text="🔙 Отмена", callback_data=f"admin_user_{user_id}"
-            ),
-        ],
-    ]
+                text="🔙 Отмена",
+                callback_data=f"admin_user_{user_id}",
+            )
+        ]
+    )
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 def get_company_selection_keyboard() -> InlineKeyboardMarkup:
     """Клавиатура выбора компании при регистрации"""
-    buttons = [
-        [InlineKeyboardButton(text="Компания 1", callback_data="reg_company_company1")],
-        [InlineKeyboardButton(text="Компания 2", callback_data="reg_company_company2")],
-    ]
+    buttons = []
+    for key, name in settings.COMPANY_FULL_NAMES.items():
+        buttons.append(
+            [InlineKeyboardButton(text=name, callback_data=f"reg_company_{key}")]
+        )
     return InlineKeyboardMarkup(inline_keyboard=buttons)

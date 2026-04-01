@@ -18,8 +18,8 @@ class AuthMiddleware(BaseMiddleware):
     PUBLIC_COMMANDS = {"/start", "/help", "/cancel"}
     PUBLIC_CALLBACKS = {
         "cancel_registration",
-        "reg_company_company1",
-        "reg_company_company2",
+        "reg_company_intellectika",
+        "reg_company_consulting",
     }
     REGISTRATION_STATE_PREFIX = "RegistrationForm"
 

@@ -175,6 +175,7 @@ class UserRepository:
             .filter(
                 User.is_verified == True,
                 User.is_admin == False,
+                User.company != "consulting",
                 User.access_granted_at != None,
                 User.access_granted_at + timedelta(days=358) <= now,
             )
@@ -191,6 +192,7 @@ class UserRepository:
             .filter(
                 User.is_verified == True,
                 User.is_admin == False,
+                User.company != "consulting",
                 User.access_granted_at != None,
                 User.access_granted_at + timedelta(days=358) <= threshold,
                 User.access_granted_at + timedelta(days=358) > now,

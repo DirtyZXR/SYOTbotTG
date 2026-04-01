@@ -15,7 +15,6 @@ class FileBrowserState(StatesGroup):
 class AdminState(StatesGroup):
     """Состояния админского меню"""
 
-    changing_code = State()  # Ввод нового секретного кода
     searching_users = State()  # Ввод поискового запроса пользователей
     editing_user_full_name = State()  # Редактирование ФИО пользователя
     editing_user_email = State()  # Редактирование email пользователя

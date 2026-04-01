@@ -19,7 +19,7 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def init_db():
     """Инициализация базы данных"""
-    from models import User, Document, Test, TestResult, Settings
+    from models import User, Document, Test, TestResult
 
     # Создаём таблицы
     Base.metadata.create_all(bind=engine)

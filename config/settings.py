@@ -21,10 +21,14 @@ class Settings(BaseSettings):
     # Documents
     documents_path: str = "./data/documents"
 
-    # Security
-    security_code: str = "123456"  # Код, который админ сообщает пользователям
-
-    COMPANY_ROOTS: dict = {"company1": "Folder1", "company2": "Folder2"}
+    COMPANY_ROOTS: dict = {
+        "intellectika": "ООО Интеллектика",
+        "consulting": "ООО Интеллектика Консалтинг",
+    }
+    COMPANY_FULL_NAMES: dict = {
+        "intellectika": 'ООО "Интеллектика"',
+        "consulting": 'ООО "Интеллектика Консалтинг"',
+    }
 
     # Paths
     @property

@@ -78,7 +78,7 @@ async def cmd_start(message: Message, state: FSMContext):
         await state.set_state(RegistrationForm.waiting_for_full_name)
         await message.answer(
             "🔐 Регистрация в системе\n\n"
-            "Шаг 1/2: Введите ваше ФИО\n\n"
+            "Шаг 1/3: Введите ваше ФИО\n\n"
             "Например: Иванов Иван Иванович",
             reply_markup=get_cancel_keyboard(),
         )
@@ -109,7 +109,6 @@ async def cmd_cancel(message: Message, state: FSMContext):
 
     # Если это админская операция
     if current_state in (
-        AdminState.changing_code,
         AdminState.searching_users,
         AdminState.editing_user_full_name,
         AdminState.editing_user_email,
@@ -186,29 +185,6 @@ async def cmd_users(message: Message):
     await message.answer(msg)
 
 
-@dp.message(Command("setcode"))
-async def cmd_setcode(message: Message):
-    """Установить код безопасности"""
-    if not AuthService.is_admin(message.from_user.id):
-        await message.answer("❌ У вас нет прав администратора")
-        return
-
-    args = message.text.split(maxsplit=1)
-    if len(args) < 2:
-        await message.answer(
-            "❌ Неверный формат команды\n\nИспользуйте: /setcode [новый код]"
-        )
-        return
-
-    # Обновляем код (это упрощённая версия, в реальном приложении нужно обновлять в БД)
-    # Сейчас мы просто сообщаем об изменении
-    new_code = args[1].strip()
-    await message.answer(
-        f"⚠️ Код безопасности изменён на: {new_code}\n\n"
-        f"❗️ Для постоянного изменения обновите файл .env"
-    )
-
-
 @dp.message(Command("load_tests"))
 async def cmd_load_tests(message: Message):
     """Загрузить тесты из папки"""
@@ -248,7 +224,7 @@ async def process_full_name(message: Message, state: FSMContext):
     await state.update_data(full_name=full_name)
     await state.set_state(RegistrationForm.waiting_for_email)
     await message.answer(
-        f"✅ ФИО принято: {full_name}\n\nШаг 2/2: Введите ваш корпоративный email",
+        f"✅ ФИО принято: {full_name}\n\nШаг 2/3: Введите ваш корпоративный email",
         reply_markup=get_cancel_keyboard(),
     )
 
@@ -298,7 +274,7 @@ async def callback_reg_company(callback: CallbackQuery, state: FSMContext):
 
     if reg_success:
         await state.clear()
-        company_display = "Компания 1" if company_key == "company1" else "Компания 2"
+        company_display = settings.COMPANY_FULL_NAMES.get(company_key, company_key)
         await callback.message.edit_text(
             "✅ Заявка отправлена!\n\n"
             "⏳ Ожидайте подтверждения от администратора.\n"
@@ -568,6 +544,13 @@ async def callback_menu(callback: CallbackQuery, state: FSMContext):
             await callback.answer()
         elif action == "tests":
             logger.info(f"Tests button pressed by user {callback.from_user.id}")
+            # Консалтинг — тесты недоступны
+            test_user = AuthService.get_user(callback.from_user.id)
+            if test_user and test_user.company == "consulting":
+                await callback.answer(
+                    "❌ Функция недоступна для вашей компании", show_alert=True
+                )
+                return
             await callback.message.edit_text(
                 "📝 <b>Система тестирования</b>\n\n"
                 "⚠️ В разработке\n\n"
@@ -580,6 +563,12 @@ async def callback_menu(callback: CallbackQuery, state: FSMContext):
             await callback.answer()
         elif action == "profile":
             user = AuthService.get_user(callback.from_user.id)
+            # Консалтинг — профиль недоступен
+            if user and user.company == "consulting":
+                await callback.answer(
+                    "❌ Функция недоступна для вашей компании", show_alert=True
+                )
+                return
             if not user:
                 await callback.answer("❌ Пользователь не найден", show_alert=True)
                 return
@@ -1456,11 +1445,11 @@ async def callback_admin_set_company(callback: CallbackQuery):
     db.commit()
     db.refresh(user)
 
-    company_display = {
-        "company1": "Компания 1",
-        "company2": "Компания 2",
-        None: "Не указана",
-    }.get(user.company, user.company or "Не указана")
+    company_display = (
+        settings.COMPANY_FULL_NAMES.get(user.company, "Не указана")
+        if user.company
+        else "Не указана"
+    )
 
     db.close()
 
@@ -1585,58 +1574,6 @@ async def callback_back_to_admin_menu(callback: CallbackQuery):
         reply_markup=get_admin_menu_keyboard(),
     )
     await callback.answer()
-
-
-@dp.callback_query(lambda c: c.data == "admin_change_code")
-async def callback_admin_change_code(callback: CallbackQuery, state: FSMContext):
-    """Начало смены секретного кода"""
-    if not AuthService.is_admin(callback.from_user.id):
-        await callback.answer("❌ У вас нет прав администратора", show_alert=True)
-        return
-
-    await state.set_state(AdminState.changing_code)
-    await callback.message.edit_text(
-        "🔑 <b>Смена секретного кода</b>\n\n"
-        "Введите новый секретный код для регистрации пользователей.",
-        parse_mode=ParseMode.HTML,
-        reply_markup=get_cancel_operation_keyboard(),
-    )
-    await callback.answer()
-
-
-@dp.message(StateFilter(AdminState.changing_code))
-async def process_new_code(message: Message, state: FSMContext):
-    """Обработчик ввода нового секретного кода"""
-    if not AuthService.is_admin(message.from_user.id):
-        await state.clear()
-        await message.answer("❌ У вас нет прав администратора")
-        return
-
-    new_code = message.text.strip()
-
-    # Проверяем, что код не пустой
-    if not new_code:
-        await message.answer("❌ Код не может быть пустым. Попробуйте ещё раз.")
-        return
-
-    # Проверяем, что код не содержит пробелов
-    if " " in new_code:
-        await message.answer("❌ Код не должен содержать пробелов. Попробуйте ещё раз.")
-        return
-
-    # Сохраняем код в БД
-    from core import SettingsService
-
-    SettingsService.set_security_code(new_code)
-
-    await state.clear()
-    await message.answer(
-        f"✅ <b>Секретный код изменён!</b>\n\n"
-        f"🔑 Новый код: <code>{new_code}</code>\n\n"
-        f"📋 Код сохранен в базе данных и теперь используется для регистрации.",
-        parse_mode=ParseMode.HTML,
-        reply_markup=get_admin_menu_keyboard(),
-    )
 
 
 @dp.callback_query(lambda c: c.data == "admin_load_tests")
