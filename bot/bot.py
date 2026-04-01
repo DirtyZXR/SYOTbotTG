@@ -12,13 +12,9 @@ from config import settings
 from core import (
     AuthService,
     DocumentService,
-    TestService,
     NotificationService,
 )
 from bot.keyboards import (
-    get_categories_keyboard,
-    get_subcategories_keyboard,
-    get_documents_keyboard,
     get_test_groups_keyboard,
     get_test_answers_keyboard,
     get_main_menu_keyboard,
@@ -35,8 +31,15 @@ from bot.keyboards import (
     get_access_date_keyboard,
     get_profile_keyboard,
     get_company_selection_keyboard,
+    get_test_cancel_keyboard,
 )
-from bot.states import RegistrationForm, FileBrowserState, AdminState, ProfileState
+from bot.states import (
+    RegistrationForm,
+    FileBrowserState,
+    AdminState,
+    ProfileState,
+    TestState,
+)
 from database import init_db
 from utils import logger
 
@@ -137,6 +140,7 @@ async def cmd_cancel(message: Message, state: FSMContext):
         RegistrationForm.waiting_for_email,
         RegistrationForm.waiting_for_full_name,
         RegistrationForm.waiting_for_company,
+        TestState.taking_test,
     ):
         await state.clear()
         await message.answer(
@@ -183,21 +187,6 @@ async def cmd_users(message: Message):
 
     msg = NotificationService.format_admin_user_list(users)
     await message.answer(msg)
-
-
-@dp.message(Command("load_tests"))
-async def cmd_load_tests(message: Message):
-    """Загрузить тесты из папки"""
-    if not AuthService.is_admin(message.from_user.id):
-        await message.answer("❌ У вас нет прав администратора")
-        return
-
-    await message.answer(
-        "📝 <b>Система тестирования</b>\n\n"
-        "⚠️ В разработке\n\n"
-        "Функционал тестирования находится в стадии разработки.",
-        parse_mode=ParseMode.HTML,
-    )
 
 
 # ==================== Registration Handlers ====================
@@ -438,6 +427,33 @@ async def go_back_to_main_menu(callback: CallbackQuery, state: FSMContext):
     )
 
 
+async def show_question(callback: CallbackQuery, state: FSMContext):
+    """Helper function to show the current test question."""
+    data = await state.get_data()
+    questions = data.get("test_questions", [])
+    current_index = data.get("test_current", 0)
+
+    if current_index >= len(questions):
+        # This case should be handled by the answer handler, but as a fallback:
+        await callback.message.edit_text("Тест завершен!")
+        await state.clear()
+        return
+
+    question = questions[current_index]
+    question_text = (
+        f"📝 <b>Вопрос {current_index + 1}/{len(questions)}</b>\n\n"
+        f"{question['question']}"
+    )
+
+    await callback.message.edit_text(
+        text=question_text,
+        reply_markup=get_test_answers_keyboard(
+            question_num=current_index, options=question["options"]
+        ),
+        parse_mode=ParseMode.HTML,
+    )
+
+
 # ==================== Callback Handlers ====================
 
 
@@ -544,21 +560,41 @@ async def callback_menu(callback: CallbackQuery, state: FSMContext):
             await callback.answer()
         elif action == "tests":
             logger.info(f"Tests button pressed by user {callback.from_user.id}")
-            # Консалтинг — тесты недоступны
-            test_user = AuthService.get_user(callback.from_user.id)
-            if test_user and test_user.company == "consulting":
+            user = AuthService.get_user(callback.from_user.id)
+            if not user or user.company != "intellectika":
                 await callback.answer(
-                    "❌ Функция недоступна для вашей компании", show_alert=True
+                    '❌ Функция тестирования доступна только для сотрудников ООО "Интеллектика"',
+                    show_alert=True,
                 )
                 return
+
+            from core.test_service import is_group_available, get_group3_unlock_date
+            from datetime import datetime
+
+            # Проверяем статус
+            msg = ""
+            if user.group2_passed_at and not is_group_available(user, 3):
+                unlock = get_group3_unlock_date(user)
+                days_left = (
+                    (unlock - datetime.now()).days
+                    if unlock and unlock > datetime.now()
+                    else 0
+                )
+                if days_left > 0:
+                    msg = f"✅ Группа 2 сдана.\n\n⏳ Группа 3 откроется через {days_left} дн."
+                else:
+                    msg = "✅ Группа 2 сдана.\n\n⏳ Группа 3 скоро будет доступна. Попробуйте зайти позже."
+
+            elif not is_group_available(user, 2) and not is_group_available(user, 3):
+                msg = "✅ Вы уже сдали все доступные группы тестов."
+
+            else:
+                msg = "📝 <b>Тестирование</b>\n\nВыберите группу для сдачи:"
+
             await callback.message.edit_text(
-                "📝 <b>Система тестирования</b>\n\n"
-                "⚠️ В разработке\n\n"
-                "Функционал тестирования находится в стадии разработки.",
+                msg,
                 parse_mode=ParseMode.HTML,
-            )
-            logger.info(
-                f"Tests development message shown to user {callback.from_user.id}"
+                reply_markup=get_test_groups_keyboard(user),
             )
             await callback.answer()
         elif action == "profile":
@@ -596,88 +632,152 @@ async def callback_menu(callback: CallbackQuery, state: FSMContext):
             logger.error(f"Error answering callback: {callback_error}")
 
 
-@dp.callback_query(lambda c: c.data.startswith("category_"))
-async def callback_category(callback: CallbackQuery):
-    """Обработчик категории документов"""
-    category = callback.data.split("_")[1]
-
-    await callback.message.edit_text(
-        f"📂 {category.upper()}\n\nВыберите подкатегорию:",
-        reply_markup=get_subcategories_keyboard(category),
-    )
-    await callback.answer()
+# ==================== Test Handlers ====================
 
 
-@dp.callback_query(lambda c: c.data.startswith("subcategory_"))
-async def callback_subcategory(callback: CallbackQuery):
-    """Обработчик подкатегории документов"""
-    parts = callback.data.split("_")
-    category = parts[1]
-    subcategory = "_".join(parts[2:])
+@dp.callback_query(lambda c: c.data.startswith("test_start_"))
+async def callback_test_start(callback: CallbackQuery, state: FSMContext):
+    """Начало теста для выбранной группы."""
+    group = int(callback.data.split("_")[-1])
 
-    documents = DocumentService.get_documents_by_subcategory(category, subcategory)
+    from core.test_service import select_random_questions, is_group_available
 
-    if not documents:
-        await callback.answer("❌ Документы не найдены", show_alert=True)
+    user = AuthService.get_user(callback.from_user.id)
+    if not is_group_available(user, group):
+        await callback.answer("❌ Эта группа тестов вам недоступна.", show_alert=True)
         return
 
-    await callback.message.edit_text(
-        f"📂 {category.upper()} / {subcategory}\n\nВыберите документ:",
-        reply_markup=get_documents_keyboard(documents),
-    )
-    await callback.answer()
-
-
-@dp.callback_query(lambda c: c.data.startswith("document_"))
-async def callback_document(callback: CallbackQuery):
-    """Обработчик выбора документа"""
-    doc_id = int(callback.data.split("_")[1])
-    document = DocumentService.get_document_by_id(doc_id)
-
-    if not document:
-        await callback.answer("❌ Документ не найден", show_alert=True)
-        return
-
-    from pathlib import Path
-
-    file_path = Path(document.file_path)
-    if not file_path.exists():
-        await callback.answer("❌ Файл не найден", show_alert=True)
-        return
-
-    try:
-        await bot.send_document(
-            chat_id=callback.message.chat.id,
-            document=file_path,
-            caption=f"📄 {document.name}",
+    questions = select_random_questions(group)
+    if not questions:
+        await callback.answer(
+            "❌ Не удалось загрузить вопросы. Попробуйте позже.", show_alert=True
         )
-        await callback.answer("✅ Документ отправлен")
-    except Exception as e:
-        await callback.answer(f"❌ Ошибка отправки: {str(e)}", show_alert=True)
+        return
 
-
-@dp.callback_query(lambda c: c.data.startswith("test_group_"))
-async def callback_test_group(callback: CallbackQuery):
-    """Обработчик выбора группы теста"""
-    await callback.answer("⚠️ В разработке", show_alert=True)
-    await callback.message.edit_text(
-        "📝 <b>Система тестирования</b>\n\n"
-        "⚠️ В разработке\n\n"
-        "Функционал тестирования находится в стадии разработки.",
-        parse_mode=ParseMode.HTML,
+    await state.set_state(TestState.taking_test)
+    await state.set_data(
+        {
+            "test_group": group,
+            "test_questions": questions,
+            "test_answers": {},
+            "test_current": 0,
+        }
     )
 
+    await show_question(callback, state)
+    await callback.answer(f"Начинаем тест для группы {group}!")
 
-@dp.callback_query(lambda c: c.data.startswith("answer_"))
-async def callback_answer(callback: CallbackQuery):
-    """Обработчик ответа на вопрос теста"""
-    await callback.answer("⚠️ В разработке", show_alert=True)
+
+@dp.callback_query(
+    StateFilter(TestState.taking_test), lambda c: c.data.startswith("answer_")
+)
+async def callback_test_answer(callback: CallbackQuery, state: FSMContext):
+    """Обработчик ответа на вопрос теста."""
+    data = await state.get_data()
+    current_index = data.get("test_current", 0)
+    answers = data.get("test_answers", {})
+    questions = data.get("test_questions", [])
+
+    # парсим callback: ta_{question_index}_{option_index}
+    parts = callback.data.split("_")
+    q_index = int(parts[1])
+    opt_index = int(parts[2])
+
+    if q_index != current_index:
+        await callback.answer(
+            "Не спешите, отвечайте на текущий вопрос.", show_alert=True
+        )
+        return
+
+    # Сохраняем ответ (текст опции)
+    selected_option_text = questions[current_index]["options"][opt_index - 1]
+    answers[str(current_index)] = selected_option_text
+
+    next_index = current_index + 1
+    await state.update_data(test_answers=answers, test_current=next_index)
+
+    if next_index < len(questions):
+        await show_question(callback, state)
+        await callback.answer(f"Ответ на вопрос {current_index + 1} принят.")
+    else:
+        # Тест завершен
+        from core.test_service import calculate_results, format_results_message
+        from database import SessionLocal, UserRepository, TestResultRepository
+        from datetime import datetime
+
+        user = AuthService.get_user(callback.from_user.id)
+        results = calculate_results(questions, answers)
+
+        # Сохраняем результат
+        db = SessionLocal()
+        try:
+            test_result_repo = TestResultRepository(db)
+            test_result_repo.create_result(
+                user_id=user.id,
+                group=data["test_group"],
+                score=results["correct"],
+                total=results["total"],
+                percentage=results["percentage"],
+                passed=1 if results["passed"] else 0,
+            )
+
+            if results["passed"]:
+                user_repo = UserRepository(db)
+                if data["test_group"] == 2:
+                    user_repo.update_user(user, {"group2_passed_at": datetime.now()})
+                elif data["test_group"] == 3:
+                    user_repo.update_user(user, {"group3_passed_at": datetime.now()})
+
+                # Отправляем уведомление админам в случае успеха
+                admin_ids = user_repo.get_admin_ids()
+                group = data["test_group"]
+                for admin_id in admin_ids:
+                    try:
+                        action_text = (
+                            "Необходимо выдать документ."
+                            if group == 2
+                            else "Необходимо обновить документ."
+                        )
+                        await bot.send_message(
+                            admin_id,
+                            f"🎉 <b>Тест успешно сдан!</b>\n\n"
+                            f"👤 {user.full_name}\n"
+                            f"📧 {user.email}\n"
+                            f"📋 Группа {group}\n"
+                            f"📊 Результат: {results['correct']}/{results['total']} ({results['percentage']:.1f}%)\n\n"
+                            f"📦 {action_text}",
+                            parse_mode=ParseMode.HTML,
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to send test pass notification to admin {admin_id}: {e}"
+                        )
+        finally:
+            db.close()
+
+        # Показываем результаты
+        await callback.message.edit_text(
+            format_results_message(results, user.full_name, data["test_group"]),
+            parse_mode=ParseMode.HTML,
+            reply_markup=get_test_groups_keyboard(user),
+        )
+        await state.clear()
+        await callback.answer("Тест завершен!")
+
+
+@dp.callback_query(
+    StateFilter(TestState.taking_test), lambda c: c.data == "test_cancel"
+)
+async def callback_test_cancel(callback: CallbackQuery, state: FSMContext):
+    """Отмена теста."""
+    await state.clear()
+    user = AuthService.get_user(callback.from_user.id)
     await callback.message.edit_text(
-        "📝 <b>Система тестирования</b>\n\n"
-        "⚠️ В разработке\n\n"
-        "Функционал тестирования находится в стадии разработки.",
+        "📝 <b>Тестирование</b>\n\nТест был отменен. Вы можете начать заново.",
         parse_mode=ParseMode.HTML,
+        reply_markup=get_test_groups_keyboard(user),
     )
+    await callback.answer("Тест отменен.")
 
 
 # ==================== File Browser Handlers ====================
@@ -1249,7 +1349,7 @@ async def callback_admin_delete_user(callback: CallbackQuery):
 
 @dp.callback_query(lambda c: c.data.startswith("admin_confirm_delete_"))
 async def callback_admin_confirm_delete(callback: CallbackQuery):
-    """Подтверждённое удаление пользователя (админ)"""
+    """Окончательное удаление пользователя (админ)"""
     if not AuthService.is_admin(callback.from_user.id):
         await callback.answer("❌ У вас нет прав администратора", show_alert=True)
         return
@@ -1267,35 +1367,30 @@ async def callback_admin_confirm_delete(callback: CallbackQuery):
         await callback.answer("❌ Пользователь не найден", show_alert=True)
         return
 
-    user_display = f"{user.full_name or 'Не указано'} ({user.email})"
     user_repo.delete_user(user)
     db.close()
 
     await callback.message.edit_text(
-        f"✅ <b>Пользователь удалён</b>\n\n"
-        f"🗑️ {user_display}\n\n"
-        f"Все связанные данные (результаты тестов) также удалены.",
-        parse_mode=ParseMode.HTML,
-        reply_markup=get_admin_menu_keyboard(),
+        f"🗑️ Пользователь {user.full_name or user.email} удалён.",
     )
-    await callback.answer()
+    await callback.answer("🗑️ Пользователь удалён")
 
 
 @dp.callback_query(lambda c: c.data.startswith("admin_set_access_date_"))
 async def callback_admin_set_access_date(callback: CallbackQuery, state: FSMContext):
-    """Начало установки даты выдачи документа (админ)"""
+    """Начало установки даты выдачи документа"""
     if not AuthService.is_admin(callback.from_user.id):
         await callback.answer("❌ У вас нет прав администратора", show_alert=True)
         return
 
     user_id = int(callback.data.split("_")[-1])
-    await state.update_data(edit_user_id=user_id)
+
     await state.set_state(AdminState.setting_user_access_date)
+    await state.update_data(edit_user_id=user_id)
 
     await callback.message.edit_text(
-        "📅 <b>Установка даты выдачи документа</b>\n\n"
-        "Введите дату в формате <b>ДД.ММ.ГГГГ</b>\n"
-        "или нажмите кнопку «Сегодня»:",
+        "📅 <b>Установка даты выдачи</b>\n\n"
+        "Введите дату в формате ДД.ММ.ГГГГ или нажмите 'Сегодня'",
         parse_mode=ParseMode.HTML,
         reply_markup=get_access_date_keyboard(user_id),
     )
@@ -1304,13 +1399,15 @@ async def callback_admin_set_access_date(callback: CallbackQuery, state: FSMCont
 
 @dp.callback_query(lambda c: c.data.startswith("admin_set_today_"))
 async def callback_admin_set_today(callback: CallbackQuery, state: FSMContext):
-    """Установка сегодняшней даты выдачи документа (админ)"""
+    """Установка сегодняшней даты выдачи"""
     if not AuthService.is_admin(callback.from_user.id):
         await callback.answer("❌ У вас нет прав администратора", show_alert=True)
         return
 
     user_id = int(callback.data.split("_")[-1])
+    from datetime import datetime
 
+    await state.clear()
     from database import UserRepository, SessionLocal
 
     db = SessionLocal()
@@ -1322,52 +1419,35 @@ async def callback_admin_set_today(callback: CallbackQuery, state: FSMContext):
         await callback.answer("❌ Пользователь не найден", show_alert=True)
         return
 
-    from datetime import datetime, timedelta
-
-    now = datetime.now()
-    expiry = now + timedelta(days=358)
-    user_repo.set_access_date(user, now)
+    user_repo.update_access_date(user, datetime.now())
     db.close()
-    await state.clear()
 
     await callback.message.edit_text(
-        f"✅ <b>Дата выдачи документа установлена</b>\n\n"
-        f"📋 {user.full_name or 'Не указано'}\n"
-        f"📅 Дата: {now.strftime('%d.%m.%Y')}\n"
-        f"⏰ Допуск действителен 358 дней (до {expiry.strftime('%d.%m.%Y')})",
-        parse_mode=ParseMode.HTML,
-        reply_markup=get_admin_menu_keyboard(),
+        f"✅ Дата выдачи для {user.full_name or user.email} установлена на сегодня.",
+        reply_markup=get_admin_user_keyboard(user.id),
     )
     await callback.answer("✅ Дата установлена")
 
 
 @dp.message(StateFilter(AdminState.setting_user_access_date))
-async def process_admin_access_date(message: Message, state: FSMContext):
-    """Обработчик ввода даты выдачи документа (админ)"""
+async def process_admin_set_access_date(message: Message, state: FSMContext):
+    """Обработка ввода даты выдачи"""
     if not AuthService.is_admin(message.from_user.id):
         await state.clear()
         await message.answer("❌ У вас нет прав администратора")
         return
 
-    date_str = message.text.strip()
-
     from datetime import datetime
 
     try:
-        date = datetime.strptime(date_str, "%d.%m.%Y")
+        date = datetime.strptime(message.text, "%d.%m.%Y")
     except ValueError:
-        await message.answer(
-            "❌ Неверный формат даты.\n\n"
-            "Введите дату в формате <b>ДД.ММ.ГГГГ</b>\n"
-            "Например: 15.03.2026",
-            parse_mode=ParseMode.HTML,
-        )
+        await message.answer("❌ Неверный формат даты. Введите ДД.ММ.ГГГГ")
         return
 
     data = await state.get_data()
     user_id = data.get("edit_user_id")
     await state.clear()
-
     from database import UserRepository, SessionLocal
 
     db = SessionLocal()
@@ -1379,91 +1459,16 @@ async def process_admin_access_date(message: Message, state: FSMContext):
         await message.answer("❌ Пользователь не найден.")
         return
 
-    user_repo.set_access_date(user, date)
+    user_repo.update_access_date(user, date)
     db.close()
 
-    from datetime import timedelta
-
-    expiry = date + timedelta(days=358)
     await message.answer(
-        f"✅ <b>Дата выдачи документа установлена</b>\n\n"
-        f"📋 {user.full_name or 'Не указано'}\n"
-        f"📅 Дата: {date.strftime('%d.%m.%Y')}\n"
-        f"⏰ Допуск действителен 358 дней (до {expiry.strftime('%d.%m.%Y')})",
-        parse_mode=ParseMode.HTML,
-        reply_markup=get_admin_menu_keyboard(),
-    )
-
-
-@dp.callback_query(lambda c: c.data.startswith("admin_edit_company_"))
-async def callback_admin_edit_company(callback: CallbackQuery, state: FSMContext):
-    """Начало изменения компании пользователя (админ)"""
-    if not AuthService.is_admin(callback.from_user.id):
-        await callback.answer("❌ У вас нет прав администратора", show_alert=True)
-        return
-
-    user_id = int(callback.data.split("_")[-1])
-
-    from bot.keyboards.inline import get_admin_company_keyboard
-
-    await callback.message.edit_text(
-        "🏢 <b>Выбор компании</b>\n\nВыберите компанию для пользователя:",
-        parse_mode=ParseMode.HTML,
-        reply_markup=get_admin_company_keyboard(user_id),
-    )
-    await callback.answer()
-
-
-@dp.callback_query(lambda c: c.data.startswith("admin_set_company_"))
-async def callback_admin_set_company(callback: CallbackQuery):
-    """Установка компании пользователя (админ)"""
-    if not AuthService.is_admin(callback.from_user.id):
-        await callback.answer("❌ У вас нет прав администратора", show_alert=True)
-        return
-
-    # Parse: admin_set_company_{company_key}_{user_id}
-    parts = callback.data.split("_")
-    # parts: ["admin", "set", "company", company_key, user_id] or ["admin", "set", "company", "none", user_id]
-    company_key = parts[3]
-    user_id = int(parts[4])
-
-    from database import UserRepository, SessionLocal
-
-    db = SessionLocal()
-    user_repo = UserRepository(db)
-    user = user_repo.get_by_id(user_id)
-
-    if not user:
-        db.close()
-        await callback.answer("❌ Пользователь не найден", show_alert=True)
-        return
-
-    if company_key == "none":
-        user.company = None
-    else:
-        user.company = company_key
-    db.commit()
-    db.refresh(user)
-
-    company_display = (
-        settings.COMPANY_FULL_NAMES.get(user.company, "Не указана")
-        if user.company
-        else "Не указана"
-    )
-
-    db.close()
-
-    await callback.message.edit_text(
-        f"✅ <b>Компания изменена</b>\n\n"
-        f"👤 {user.full_name or 'Не указано'}\n"
-        f"🏢 Компания: {company_display}",
-        parse_mode=ParseMode.HTML,
+        f"✅ Дата выдачи для {user.full_name or user.email} установлена на {date.strftime('%d.%m.%Y')}",
         reply_markup=get_admin_user_keyboard(user.id),
     )
-    await callback.answer("✅ Компания обновлена")
 
 
-@dp.callback_query(lambda c: c.data == "admin_manage_admins")
+@dp.callback_query(lambda c: c.data.startswith("admin_manage_admins"))
 async def callback_admin_manage_admins(callback: CallbackQuery):
     """Управление администраторами"""
     if not AuthService.is_admin(callback.from_user.id):
@@ -1474,100 +1479,68 @@ async def callback_admin_manage_admins(callback: CallbackQuery):
 
     db = SessionLocal()
     user_repo = UserRepository(db)
-    users = user_repo.get_all_users()
+    users = user_repo.get_all_verified_users()
     db.close()
-
-    if not users:
-        await callback.answer(
-            "❌ Нет зарегистрированных пользователей", show_alert=True
-        )
-        return
 
     await callback.message.edit_text(
         "👨‍💼 <b>Управление администраторами</b>\n\n"
-        "Нажмите на пользователя для назначения/снятия админских прав:",
+        "Нажмите на пользователя, чтобы добавить или убрать права администратора.\n\n"
+        "👨‍💼 - Администратор\n"
+        "👤 - Пользователь",
         parse_mode=ParseMode.HTML,
         reply_markup=get_manage_admins_keyboard(users),
     )
     await callback.answer()
 
 
-@dp.callback_query(lambda c: c.data.startswith("add_admin_"))
-async def callback_add_admin(callback: CallbackQuery):
-    """Назначить администратора"""
+@dp.callback_query(
+    lambda c: c.data.startswith("add_admin_") or c.data.startswith("remove_admin_")
+)
+async def callback_toggle_admin(callback: CallbackQuery):
+    """Добавить/убрать права администратора"""
     if not AuthService.is_admin(callback.from_user.id):
         await callback.answer("❌ У вас нет прав администратора", show_alert=True)
         return
 
-    user_id = int(callback.data.split("_")[-1])
+    action, user_id = callback.data.split("_", 1)[0], int(callback.data.split("_")[-1])
 
-    from database import UserRepository, SessionLocal
-
-    db = SessionLocal()
-    user_repo = UserRepository(db)
-    user = user_repo.get_by_id(user_id)
-
-    if not user:
-        db.close()
-        await callback.answer("❌ Пользователь не найден", show_alert=True)
-        return
-
-    user_repo.set_admin(user, is_admin=True)
-    users = user_repo.get_all_users()
-    db.close()
-
-    await callback.message.edit_text(
-        f"✅ <b>Пользователь назначен администратором!</b>\n\n"
-        f"👤 {user.full_name or user.email}",
-        parse_mode=ParseMode.HTML,
-        reply_markup=get_manage_admins_keyboard(users),
-    )
-    await callback.answer()
-
-
-@dp.callback_query(lambda c: c.data.startswith("remove_admin_"))
-async def callback_remove_admin(callback: CallbackQuery):
-    """Снять права администратора"""
-    if not AuthService.is_admin(callback.from_user.id):
-        await callback.answer("❌ У вас нет прав администратора", show_alert=True)
-        return
-
-    user_id = int(callback.data.split("_")[-1])
-
-    from database import UserRepository, SessionLocal
-
-    db = SessionLocal()
-    user_repo = UserRepository(db)
-    user = user_repo.get_by_id(user_id)
-
-    if not user:
-        db.close()
-        await callback.answer("❌ Пользователь не найден", show_alert=True)
-        return
-
-    # Проверяем, что не пытаемся снять права с самого себя
-    if user.telegram_id == callback.from_user.id:
-        db.close()
+    if user_id == settings.admin_id:
         await callback.answer(
-            "❌ Нельзя снять права администратора у самого себя", show_alert=True
+            "❌ Нельзя убрать права у главного администратора.", show_alert=True
         )
         return
 
-    user_repo.set_admin(user, is_admin=False)
-    users = user_repo.get_all_users()
+    from database import UserRepository, SessionLocal
+
+    db = SessionLocal()
+    user_repo = UserRepository(db)
+    user = user_repo.get_by_id(user_id)
+
+    if not user:
+        db.close()
+        await callback.answer("❌ Пользователь не найден", show_alert=True)
+        return
+
+    is_admin = action == "add_admin"
+    user_repo.set_admin(user, is_admin)
+    users = user_repo.get_all_verified_users()
     db.close()
 
-    await callback.message.edit_text(
-        f"❌ <b>Права администратора сняты!</b>\n\n👤 {user.full_name or user.email}",
-        parse_mode=ParseMode.HTML,
-        reply_markup=get_manage_admins_keyboard(users),
+    await callback.message.edit_reply_markup(
+        reply_markup=get_manage_admins_keyboard(users)
     )
-    await callback.answer()
+    await callback.answer(
+        f"✅ Права администратора {'выданы' if is_admin else 'сняты'}"
+    )
 
 
 @dp.callback_query(lambda c: c.data == "back_to_admin_menu")
 async def callback_back_to_admin_menu(callback: CallbackQuery):
-    """Возврат в админское меню"""
+    """Возврат в меню администратора"""
+    if not AuthService.is_admin(callback.from_user.id):
+        await callback.answer("❌ У вас нет прав администратора", show_alert=True)
+        return
+
     await callback.message.edit_text(
         "🔧 <b>Меню администратора:</b>\n\nДоступные действия:",
         parse_mode=ParseMode.HTML,
@@ -1584,50 +1557,27 @@ async def callback_admin_load_tests(callback: CallbackQuery):
         return
 
     await callback.message.edit_text(
-        "📝 <b>Система тестирования</b>\n\n"
-        "⚠️ В разработке\n\n"
-        "Функционал тестирования находится в стадии разработки.",
+        "📝 <b>Сканирование тестов</b>\n\n"
+        "Загрузка тестов через команду /load_tests временно отключена.\n"
+        "Обратитесь к разработчику.",
         parse_mode=ParseMode.HTML,
         reply_markup=get_admin_menu_keyboard(),
     )
     await callback.answer()
 
 
-# ==================== Entry Point ====================
+# ==================== Main Function ====================
 
 
 async def main():
-    """Запуск бота"""
-    try:
-        # Инициализируем базу данных
-        logger.info("Initializing database...")
-        init_db()
-        logger.info("Database initialized successfully")
+    """Главная функция"""
+    # Инициализируем базу данных
+    init_db()
 
-        # Инициализируем настройки из .env при первом запуске
-        logger.info("Initializing settings from environment...")
-        from core import SettingsService
-
-        SettingsService.initialize_from_env()
-        logger.info("Settings initialized successfully")
-
-        # Запуск планировщика уведомлений
-        from bot.scheduler import run_scheduler
-
-        asyncio.create_task(run_scheduler(bot))
-        logger.info("Scheduler started")
-
-        # Удаляем webhook и запускаем long polling
-        await bot.delete_webhook(drop_pending_updates=True)
-        logger.info("Bot started!")
-
-        await dp.start_polling(bot)
-    except Exception as e:
-        logger.error(f"Fatal error in bot: {e}", exc_info=True)
-        raise
+    # Запускаем бота
+    await bot.delete_webhook(drop_pending_updates=True)
+    await dp.start_polling(bot)
 
 
 if __name__ == "__main__":
-    import asyncio
-
     asyncio.run(main())

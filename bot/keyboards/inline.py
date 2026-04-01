@@ -84,15 +84,23 @@ def get_documents_keyboard(documents: List) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def get_test_groups_keyboard() -> InlineKeyboardMarkup:
-    """Клавиатура с группами тестов"""
-    buttons = [
-        [InlineKeyboardButton(text="Группа 2", callback_data="test_group_2")],
-        [InlineKeyboardButton(text="Группа 3", callback_data="test_group_3")],
-        [InlineKeyboardButton(text="Группа 4", callback_data="test_group_4")],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_menu")],
-    ]
+def get_test_groups_keyboard(user) -> InlineKeyboardMarkup:
+    """Клавиатура выбора группы теста (только доступные)"""
+    from core.test_service import is_group_available
 
+    buttons = []
+    if is_group_available(user, 2):
+        buttons.append(
+            [InlineKeyboardButton(text="📋 Группа 2", callback_data="test_start_2")]
+        )
+    if is_group_available(user, 3):
+        buttons.append(
+            [InlineKeyboardButton(text="📋 Группа 3", callback_data="test_start_3")]
+        )
+
+    buttons.append(
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_menu")]
+    )
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
@@ -392,4 +400,12 @@ def get_company_selection_keyboard() -> InlineKeyboardMarkup:
         buttons.append(
             [InlineKeyboardButton(text=name, callback_data=f"reg_company_{key}")]
         )
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_test_cancel_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура для отмены теста"""
+    buttons = [
+        [InlineKeyboardButton(text="❌ Прервать тест", callback_data="test_cancel")]
+    ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)

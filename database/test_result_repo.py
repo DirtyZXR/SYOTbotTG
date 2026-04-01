@@ -12,7 +12,7 @@ class TestResultRepository:
     def create_result(
         self,
         user_id: int,
-        test_id: int,
+        group: int,
         score: int,
         total: int,
         percentage: float,
@@ -21,7 +21,7 @@ class TestResultRepository:
         """Создание результата теста"""
         result = TestResult(
             user_id=user_id,
-            test_id=test_id,
+            group=group,
             score=score,
             total=total,
             percentage=percentage,
@@ -34,21 +34,15 @@ class TestResultRepository:
 
     def get_by_user(self, user_id: int) -> List[TestResult]:
         """Получение результатов пользователя"""
-        return (
-            self.db.query(TestResult)
-            .filter(TestResult.user_id == user_id)
-            .all()
-        )
+        return self.db.query(TestResult).filter(TestResult.user_id == user_id).all()
 
-    def get_by_user_and_test(
-        self, user_id: int, test_id: int
-    ) -> List[TestResult]:
-        """Получение результатов пользователя по конкретному тесту"""
+    def get_by_user_and_group(self, user_id: int, group: int) -> List[TestResult]:
+        """Получение результатов пользователя по конкретной группе"""
         return (
             self.db.query(TestResult)
             .filter(
                 TestResult.user_id == user_id,
-                TestResult.test_id == test_id,
+                TestResult.group == group,
             )
             .all()
         )
