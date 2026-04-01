@@ -90,11 +90,14 @@ class UserRepository:
         return user
 
     def set_access_date(self, user: User, date: datetime) -> User:
-        """Установка даты выдачи документа (начало отсчёта 358 дней)"""
+        """Устанавливает дату выдачи документа и сбрасывает флаги уведомлений"""
         user.is_verified = True
         user.access_granted_at = date
         user.notified_7d = False
         user.notified_1d = False
+        # Сбрасываем флаги уведомлений по группе 3, т.к. дата изменилась
+        user.notified_3g_7d = False
+        user.notified_3g_1d = False
         self.db.commit()
         self.db.refresh(user)
         return user
@@ -196,6 +199,29 @@ class UserRepository:
                 User.access_granted_at != None,
                 User.access_granted_at + timedelta(days=358) <= threshold,
                 User.access_granted_at + timedelta(days=358) > now,
+                getattr(User, notified_field) == False,
+            )
+            .all()
+        )
+
+    def get_users_for_3g_notification(
+        self, days: int, notified_field: str
+    ) -> List[User]:
+        """Пользователи, которым через N дней открывается группа 3"""
+        from datetime import datetime, timedelta
+
+        now = datetime.now()
+        threshold = now + timedelta(days=days)
+        return (
+            self.db.query(User)
+            .filter(
+                User.company != "consulting",
+                User.is_admin == False,
+                User.group2_passed_at != None,
+                User.access_granted_at != None,
+                User.group3_passed_at == None,  # Ещё не сдал 3
+                User.access_granted_at + timedelta(days=90) <= threshold,
+                User.access_granted_at + timedelta(days=90) > now,
                 getattr(User, notified_field) == False,
             )
             .all()

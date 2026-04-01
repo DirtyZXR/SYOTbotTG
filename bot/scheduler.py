@@ -65,9 +65,41 @@ async def _run_daily_checks(bot):
             except Exception as e:
                 logger.warning(f"Failed to notify {user.telegram_id}: {e}")
 
+        # 4. Уведомления о скором открытии группы 3 (за 7 дней)
+        users_3g_7d = user_repo.get_users_for_3g_notification(7, "notified_3g_7d")
+        for user in users_3g_7d:
+            try:
+                await bot.send_message(
+                    user.telegram_id,
+                    f"📅 {user.full_name}, через 7 дней вам станет доступна группа 3 "
+                    f"по электробезопасности. Подготовьтесь к сдаче!",
+                )
+                user_repo.mark_notified(user, "notified_3g_7d")
+            except Exception as e:
+                logger.warning(
+                    f"Failed to notify {user.telegram_id} about 3g in 7d: {e}"
+                )
+
+        # 5. Уведомления о скором открытии группы 3 (за 1 день)
+        users_3g_1d = user_repo.get_users_for_3g_notification(1, "notified_3g_1d")
+        for user in users_3g_1d:
+            try:
+                await bot.send_message(
+                    user.telegram_id,
+                    f"🔥 {user.full_name}, завтра открывается группа 3! "
+                    f"Войдите в бота и сдайте тест.",
+                )
+                user_repo.mark_notified(user, "notified_3g_1d")
+            except Exception as e:
+                logger.warning(
+                    f"Failed to notify {user.telegram_id} about 3g in 1d: {e}"
+                )
+
+        # Обновляем лог
         logger.info(
             f"Scheduler done: expired={len(expired)}, "
-            f"7d={len(users_7d)}, 1d={len(users_1d)}"
+            f"7d={len(users_7d)}, 1d={len(users_1d)}, "
+            f"3g_7d={len(users_3g_7d)}, 3g_1d={len(users_3g_1d)}"
         )
     finally:
         db.close()

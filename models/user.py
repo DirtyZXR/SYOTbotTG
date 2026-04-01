@@ -22,6 +22,14 @@ class User(Base):
     notified_7d = Column(Boolean, default=False)  # Уведомление за 7 дней отправлено
     notified_1d = Column(Boolean, default=False)  # Уведомление за 1 день отправлено
     company = Column(String)  # Ключ компании из COMPANY_ROOTS (company1, company2)
+    group2_passed_at = Column(DateTime)  # Когда сдана группа 2
+    group3_passed_at = Column(DateTime)  # Когда сдана группа 3
+    notified_3g_7d = Column(
+        Boolean, default=False
+    )  # Уведомление за 7 дней до открытия группы 3
+    notified_3g_1d = Column(
+        Boolean, default=False
+    )  # Уведомление за 1 день до открытия группы 3
     created_at = Column(DateTime, server_default=func.now())
     access_granted_at = Column(DateTime)  # Дата выдачи документа
 

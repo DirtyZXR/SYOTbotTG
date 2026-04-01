@@ -20,6 +20,7 @@ class AuthMiddleware(BaseMiddleware):
         "cancel_registration",
         "reg_company_intellectika",
         "reg_company_consulting",
+        "test_cancel",
     }
     REGISTRATION_STATE_PREFIX = "RegistrationForm"
 

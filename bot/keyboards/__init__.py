@@ -1,7 +1,4 @@
 from .inline import (
-    get_categories_keyboard,
-    get_subcategories_keyboard,
-    get_documents_keyboard,
     get_test_groups_keyboard,
     get_test_answers_keyboard,
     get_main_menu_keyboard,
@@ -17,6 +14,7 @@ from .inline import (
     get_profile_keyboard,
     get_company_selection_keyboard,
     get_admin_company_keyboard,
+    get_test_cancel_keyboard,
 )
 from .file_browser import (
     get_folder_keyboard,
@@ -24,9 +22,6 @@ from .file_browser import (
 )
 
 __all__ = [
-    "get_categories_keyboard",
-    "get_subcategories_keyboard",
-    "get_documents_keyboard",
     "get_test_groups_keyboard",
     "get_test_answers_keyboard",
     "get_main_menu_keyboard",
@@ -44,4 +39,5 @@ __all__ = [
     "get_admin_company_keyboard",
     "get_folder_keyboard",
     "get_back_to_menu_button",
+    "get_test_cancel_keyboard",
 ]

@@ -1,164 +1,125 @@
+import json
+import random
+from pathlib import Path
 from typing import List, Dict, Optional
-from database import SessionLocal, TestRepository, TestResultRepository
-from models.test import Test
-from models.test_result import TestResult
-from models.user import User
+
+TESTS_FILE = Path("data/tests/test.json")
+QUESTIONS_PER_TEST = 15
+GROUP3_UNLOCK_DAYS = 90  # 3 месяца
 
 
-class TestService:
-    """Сервис работы с тестами"""
+def load_questions(group: int) -> List[Dict]:
+    """Загрузить все вопросы группы из test.json"""
+    if not TESTS_FILE.exists():
+        return []
+    with open(TESTS_FILE, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    group_key = f"group{group}"
+    group_data = data.get(group_key, {})
+    all_questions = []
+    for ticket_name, questions in group_data.items():
+        all_questions.extend(questions)
+    return all_questions
 
-    def __init__(self):
-        pass
 
-    @staticmethod
-    def get_test_by_group(group: int) -> Optional[Test]:
-        """Получение теста по группе"""
-        db = SessionLocal()
-        test_repo = TestRepository(db)
+def get_unique_questions(group: int) -> List[Dict]:
+    """Получить уникальные вопросы (дедупликация по тексту)"""
+    questions = load_questions(group)
+    seen = set()
+    unique = []
+    for q in questions:
+        if q["question"] not in seen:
+            seen.add(q["question"])
+            unique.append(q)
+    return unique
 
-        tests = test_repo.get_by_group(group)
-        db.close()
-        return tests[0] if tests else None
 
-    @staticmethod
-    def get_all_tests() -> List[Test]:
-        """Получение всех тестов"""
-        db = SessionLocal()
-        test_repo = TestRepository(db)
+def select_random_questions(group: int, count: int = QUESTIONS_PER_TEST) -> List[Dict]:
+    """Выбрать случайные уникальные вопросы для теста"""
+    unique = get_unique_questions(group)
+    count = min(count, len(unique))
+    return random.sample(unique, count)
 
-        tests = test_repo.get_all()
-        db.close()
-        return tests
 
-    @staticmethod
-    def check_answers(
-        test: Test, user_answers: Dict[int, int]
-    ) -> tuple[int, int, float, List[Dict]]:
-        """
-        Проверка ответов пользователя
-        Возвращает (correct, total, percentage, detailed_results)
-        """
-        questions = test.questions
-        total = len(questions)
-        correct = 0
-        detailed_results = []
+def check_answer(question: Dict, selected_option: str) -> bool:
+    """Проверить правильность ответа"""
+    return selected_option == question["correct_answer"]
 
-        for idx, question in enumerate(questions):
-            question_num = idx + 1
-            user_answer = user_answers.get(question_num)
-            correct_answer = question["correct_answer"]
 
-            is_correct = user_answer == correct_answer
-            if is_correct:
-                correct += 1
-
-            detailed_results.append(
-                {
-                    "question": question["question"],
-                    "user_answer": user_answer,
-                    "correct_answer": correct_answer,
-                    "is_correct": is_correct,
-                    "options": question["options"],
-                }
-            )
-
-        percentage = (correct / total * 100) if total > 0 else 0
-        return correct, total, percentage, detailed_results
-
-    @staticmethod
-    def format_results(
-        correct: int, total: int, percentage: float, detailed_results: List[Dict]
-    ) -> str:
-        """Форматирование результатов с подсветкой"""
-        result_text = f"📊 Результаты теста:\n\n"
-        result_text += f"Правильных ответов: {correct}/{total}\n"
-        result_text += f"Процент: {percentage:.1f}%\n\n"
-
-        if percentage >= 90:
-            result_text += "✅ Тест пройден успешно!\n\n"
-        else:
-            result_text += "❌ Тест не пройден (нужно ≥90%)\n\n"
-
-        result_text += "Детали:\n"
-
-        for idx, detail in enumerate(detailed_results):
-            icon = "✅" if detail["is_correct"] else "❌"
-            result_text += f"\n{idx + 1}. {icon} {detail['question']}\n"
-            result_text += f"   Ваш ответ: {detail['user_answer']}\n"
-            if not detail["is_correct"]:
-                result_text += f"   Правильный ответ: {detail['correct_answer']}\n"
-
-        return result_text
-
-    @staticmethod
-    def save_test_result(
-        user: User, test: Test, correct: int, total: int, percentage: float
-    ) -> TestResult:
-        """Сохранение результата теста"""
-        db = SessionLocal()
-        result_repo = TestResultRepository(db)
-
-        passed = 1 if percentage >= 90 else 0
-
-        result = result_repo.create_result(
-            user_id=user.id,
-            test_id=test.id,
-            score=correct,
-            total=total,
-            percentage=percentage,
-            passed=passed,
+def calculate_results(questions: List[Dict], answers: Dict[int, str]) -> Dict:
+    """Рассчитать результаты теста"""
+    correct = 0
+    details = []
+    for i, q in enumerate(questions):
+        user_answer = answers.get(str(i), "")  # Answers keys are strings from FSM
+        is_correct = check_answer(q, user_answer)
+        if is_correct:
+            correct += 1
+        details.append(
+            {
+                "question": q["question"],
+                "user_answer": user_answer,
+                "correct_answer": q["correct_answer"],
+                "is_correct": is_correct,
+            }
         )
+    total = len(questions)
+    percentage = (correct / total * 100) if total > 0 else 0
+    passed = percentage >= 90
+    return {
+        "correct": correct,
+        "total": total,
+        "percentage": percentage,
+        "passed": passed,
+        "details": details,
+    }
 
-        db.close()
-        return result
 
-    @staticmethod
-    def get_user_results(user_id: int) -> List[TestResult]:
-        """Получение результатов пользователя"""
-        db = SessionLocal()
-        result_repo = TestResultRepository(db)
+def format_results_message(results: Dict, user_name: str, group: int) -> str:
+    """Форматировать сообщение с результатами"""
+    status = "✅ СДАНО" if results["passed"] else "❌ НЕ СДАНО"
+    msg = (
+        f"📝 <b>Результаты теста — Группа {group}</b>\n"
+        f"👤 {user_name}\n"
+        f"📊 {results['correct']}/{results['total']} ({results['percentage']:.1f}%) — {status}\n\n"
+    )
+    for i, d in enumerate(results["details"], 1):
+        icon = "✅" if d["is_correct"] else "❌"
+        msg += f"{icon} <b>Вопрос {i}:</b> {d['question']}\n"
+        if d["is_correct"]:
+            msg += f"   Ответ: {d['user_answer']}\n"
+        else:
+            msg += f"   Ваш ответ: {d['user_answer'] or 'Нет ответа'}\n"
+            msg += f"   Правильный: {d['correct_answer']}\n"
+        msg += "\n"
+    return msg
 
-        results = result_repo.get_by_user(user_id)
-        db.close()
-        return results
 
-    @staticmethod
-    def load_tests_from_json(folder_path: str) -> int:
-        """Загрузка тестов из JSON файлов в папке"""
-        import json
-        from pathlib import Path
+def is_group_available(user, group: int) -> bool:
+    """Проверить доступность группы для пользователя"""
+    from datetime import datetime, timedelta
 
-        db = SessionLocal()
-        test_repo = TestRepository(db)
+    if not user or user.company != "intellectika":
+        return False
 
-        added_count = 0
-        test_folder = Path(folder_path)
+    if group == 2:
+        return user.group2_passed_at is None
+    elif group == 3:
+        if user.group3_passed_at is not None:
+            return False
+        if user.group2_passed_at is None:
+            return False
+        if not user.access_granted_at:
+            return False
+        unlock_date = user.access_granted_at + timedelta(days=GROUP3_UNLOCK_DAYS)
+        return datetime.now() >= unlock_date
+    return False
 
-        if not test_folder.exists():
-            db.close()
-            return 0
 
-        for json_file in test_folder.glob("*.json"):
-            try:
-                with open(json_file, "r", encoding="utf-8") as f:
-                    test_data = json.load(f)
+def get_group3_unlock_date(user) -> Optional[object]:
+    """Получить дату открытия группы 3"""
+    from datetime import timedelta
 
-                # Проверяем формат
-                if not all(
-                    key in test_data
-                    for key in ["name", "group", "questions"]
-                ):
-                    continue
-
-                test_repo.create_test(
-                    name=test_data["name"],
-                    group=test_data["group"],
-                    questions=test_data["questions"],
-                )
-                added_count += 1
-            except Exception:
-                continue
-
-        db.close()
-        return added_count
+    if user and user.access_granted_at:
+        return user.access_granted_at + timedelta(days=GROUP3_UNLOCK_DAYS)
+    return None
