@@ -707,7 +707,7 @@ async def callback_test_answer(callback: CallbackQuery, state: FSMContext):
         await callback.answer(f"Ответ на вопрос {current_index + 1} принят.")
     else:
         # Тест завершен
-        from core.test_service import calculate_results, format_results_message
+        from core.test_service import calculate_results
         from database import SessionLocal, UserRepository, TestResultRepository
         from datetime import datetime
 
@@ -761,12 +761,34 @@ async def callback_test_answer(callback: CallbackQuery, state: FSMContext):
         finally:
             db.close()
 
-        # Показываем результаты
+        # Показываем результаты: сначала шапку, потом детали по частям
+        from core.test_service import (
+            format_results_header,
+            format_results_details_chunk,
+        )
+
+        # 1. Отредактировать исходное сообщение, показав только шапку
         await callback.message.edit_text(
-            format_results_message(results, user.full_name, data["test_group"]),
+            format_results_header(results, user.full_name, data["test_group"]),
             parse_mode=ParseMode.HTML,
             reply_markup=get_test_groups_keyboard(user),
         )
+
+        # 2. Отправить детализацию новыми сообщениями
+        details = results["details"]
+        chunk_size = 4  # по 4 вопроса в сообщении, чтобы точно не превысить лимит
+        for i in range(0, len(details), chunk_size):
+            chunk = details[i : i + chunk_size]
+            chunk_msg = format_results_details_chunk(chunk, start_index=i + 1)
+            await bot.send_message(
+                chat_id=callback.from_user.id,
+                text=chunk_msg,
+                parse_mode=ParseMode.HTML,
+            )
+            await asyncio.sleep(
+                0.2
+            )  # Небольшая задержка, чтобы сообщения пришли по порядку
+
         await state.clear()
         await callback.answer("Тест завершен!")
 

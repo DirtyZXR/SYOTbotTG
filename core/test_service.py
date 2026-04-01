@@ -75,23 +75,28 @@ def calculate_results(questions: List[Dict], answers: Dict[int, str]) -> Dict:
     }
 
 
-def format_results_message(results: Dict, user_name: str, group: int) -> str:
-    """Форматировать сообщение с результатами"""
+def format_results_header(results: Dict, user_name: str, group: int) -> str:
+    """Форматировать заголовок с результатами теста"""
     status = "✅ СДАНО" if results["passed"] else "❌ НЕ СДАНО"
-    msg = (
+    return (
         f"📝 <b>Результаты теста — Группа {group}</b>\n"
         f"👤 {user_name}\n"
         f"📊 {results['correct']}/{results['total']} ({results['percentage']:.1f}%) — {status}\n\n"
+        f"Ниже приведена детализация ответов:"
     )
-    for i, d in enumerate(results["details"], 1):
+
+
+def format_results_details_chunk(details_chunk: List[Dict], start_index: int) -> str:
+    """Форматировать часть детализации результатов"""
+    msg = ""
+    for i, d in enumerate(details_chunk, start=start_index):
         icon = "✅" if d["is_correct"] else "❌"
         msg += f"{icon} <b>Вопрос {i}:</b> {d['question']}\n"
         if d["is_correct"]:
-            msg += f"   Ответ: {d['user_answer']}\n"
+            msg += f"   Ваш ответ: {d['user_answer']}\n\n"
         else:
             msg += f"   Ваш ответ: {d['user_answer'] or 'Нет ответа'}\n"
-            msg += f"   Правильный: {d['correct_answer']}\n"
-        msg += "\n"
+            msg += f"   Правильный: {d['correct_answer']}\n\n"
     return msg
 
 

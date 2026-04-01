@@ -57,3 +57,18 @@ data/bot.db
 # Temporary files
 *.tmp
 *.temp
+IMPLEMENTATION_PLAN.md
+migrate_add_company.py
+migrate_add_full_name_lower.py
+migrate_add_notification_flags.py
+migrate_add_test_fields.py
+nul
+PLAN_COMPANY_REGISTRATION.md
+PLAN_COMPANY_RENAME.md
+PLAN_REVIEW_AND_IMPLEMENT.md
+PLAN_TESTS.md
+data/tests/2 группа.pdf
+data/tests/test.json
+utils/group3.json
+utils/kk.pdf
+utils/pdf_to_json.py
