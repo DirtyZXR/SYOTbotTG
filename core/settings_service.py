@@ -67,11 +67,11 @@ class SettingsService:
                 email=f"admin@intellectika.ru",
                 full_name="Super Admin",
                 username="superadmin",
+                is_pending=False,
             )
             # Делаем админом
             created_user = user_repo.get_by_telegram_id(super_admin_id)
             user_repo.set_admin(created_user, is_admin=True)
-            user_repo.verify_user(created_user)
             logger.info(f"First admin created in database (ID: {super_admin_id})")
         else:
             if not existing_admin.is_admin:

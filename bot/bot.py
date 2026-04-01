@@ -1,3 +1,4 @@
+import asyncio
 from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
@@ -25,11 +26,15 @@ from bot.keyboards import (
     get_folder_keyboard,
     get_back_to_menu_button,
     get_admin_menu_keyboard,
+    get_admin_approval_keyboard,
     get_cancel_operation_keyboard,
     get_manage_admins_keyboard,
     get_user_search_results_keyboard,
     get_admin_user_keyboard,
+    get_admin_delete_confirm_keyboard,
+    get_access_date_keyboard,
     get_profile_keyboard,
+    get_company_selection_keyboard,
 )
 from bot.states import RegistrationForm, FileBrowserState, AdminState, ProfileState
 from database import init_db
@@ -41,6 +46,12 @@ bot = Bot(
 )
 dp = Dispatcher(storage=MemoryStorage())
 
+# Регистрация middleware авторизации
+from bot.middleware import AuthMiddleware
+
+dp.message.middleware(AuthMiddleware())
+dp.callback_query.middleware(AuthMiddleware())
+
 
 # ==================== Command Handlers ====================
 
@@ -49,8 +60,6 @@ dp = Dispatcher(storage=MemoryStorage())
 async def cmd_start(message: Message, state: FSMContext):
     """Обработчик команды /start"""
     user_id = message.from_user.id
-
-    # Сбрасываем текущее состояние, если есть
     await state.clear()
 
     if AuthService.is_authorized(user_id):
@@ -58,12 +67,18 @@ async def cmd_start(message: Message, state: FSMContext):
             "👋 Добро пожаловать!\n\nВыберите действие:",
             reply_markup=get_main_menu_keyboard(user_id),
         )
+    elif AuthService.is_pending(user_id):
+        await message.answer(
+            "⏳ <b>Регистрация на рассмотрении</b>\n\n"
+            "Ваша заявка ожидает подтверждения администратора.\n"
+            "После одобрения вы получите уведомление.",
+            parse_mode=ParseMode.HTML,
+        )
     else:
-        # Начинаем пошаговую регистрацию
         await state.set_state(RegistrationForm.waiting_for_full_name)
         await message.answer(
             "🔐 Регистрация в системе\n\n"
-            "Шаг 1/3: Введите ваше ФИО\n\n"
+            "Шаг 1/2: Введите ваше ФИО\n\n"
             "Например: Иванов Иван Иванович",
             reply_markup=get_cancel_keyboard(),
         )
@@ -98,6 +113,8 @@ async def cmd_cancel(message: Message, state: FSMContext):
         AdminState.searching_users,
         AdminState.editing_user_full_name,
         AdminState.editing_user_email,
+        AdminState.setting_user_access_date,
+        AdminState.editing_user_company,
     ):
         if AuthService.is_admin(message.from_user.id):
             await state.clear()
@@ -120,7 +137,7 @@ async def cmd_cancel(message: Message, state: FSMContext):
     elif current_state in (
         RegistrationForm.waiting_for_email,
         RegistrationForm.waiting_for_full_name,
-        RegistrationForm.waiting_for_code,
+        RegistrationForm.waiting_for_company,
     ):
         await state.clear()
         await message.answer(
@@ -231,7 +248,7 @@ async def process_full_name(message: Message, state: FSMContext):
     await state.update_data(full_name=full_name)
     await state.set_state(RegistrationForm.waiting_for_email)
     await message.answer(
-        f"✅ ФИО принято: {full_name}\n\nШаг 2/3: Введите ваш корпоративный email",
+        f"✅ ФИО принято: {full_name}\n\nШаг 2/2: Введите ваш корпоративный email",
         reply_markup=get_cancel_keyboard(),
     )
 
@@ -241,67 +258,176 @@ async def process_email(message: Message, state: FSMContext):
     """Обработчик ввода email"""
     email = message.text.strip()
 
-    # Проверяем валидность email (без создания пользователя)
     success, msg = AuthService.validate_email(email)
 
     if success:
-        # Сохраняем email в состоянии FSM
         await state.update_data(email=email)
-        await state.set_state(RegistrationForm.waiting_for_code)
+        await state.set_state(RegistrationForm.waiting_for_company)
         await message.answer(
-            "✅ Email принят!\n\n"
-            "Шаг 3/3: Введите код безопасности\n\n"
-            "Код вы должны получить от администратора",
-            reply_markup=get_cancel_keyboard(),
+            "✅ Email принят\n\n🏢 Шаг 3/3: Выберите вашу компанию:",
+            reply_markup=get_company_selection_keyboard(),
         )
     else:
         await message.answer(f'❌ {msg}\n\nПопробуйте ещё раз или нажмите "Отмена"')
 
 
-@dp.message(StateFilter(RegistrationForm.waiting_for_code))
-async def process_code(message: Message, state: FSMContext):
-    """Обработчик ввода кода безопасности"""
-    code = message.text.strip()
+@dp.callback_query(lambda c: c.data.startswith("reg_company_"))
+async def callback_reg_company(callback: CallbackQuery, state: FSMContext):
+    """Обработчик выбора компании при регистрации"""
+    company_key = callback.data.split("reg_company_")[1]
 
-    # Получаем данные из состояния FSM
     data = await state.get_data()
-    email = data.get("email")
     full_name = data.get("full_name")
+    email = data.get("email")
 
-    if not email:
+    if not full_name or not email:
         await state.clear()
-        await message.answer(
-            "❌ Ошибка: email не найден. Начните регистрацию заново командой /start"
+        await callback.message.edit_text(
+            "❌ Ошибка регистрации. Начните заново: /start"
         )
+        await callback.answer()
         return
 
-    # Создаём и верифицируем пользователя одним действием
-    success, msg = AuthService.register_and_verify(
-        telegram_id=message.from_user.id,
+    reg_success, reg_msg = AuthService.register_user(
+        telegram_id=callback.from_user.id,
         email=email,
-        code=code,
         full_name=full_name,
-        username=message.from_user.username,
+        username=callback.from_user.username,
+        company=company_key,
     )
 
-    if success:
+    if reg_success:
         await state.clear()
-        await message.answer(
-            f"✅ {msg}\n\n👋 Добро пожаловать!\n\nВыберите действие:",
-            reply_markup=get_main_menu_keyboard(message.from_user.id),
+        company_display = "Компания 1" if company_key == "company1" else "Компания 2"
+        await callback.message.edit_text(
+            "✅ Заявка отправлена!\n\n"
+            "⏳ Ожидайте подтверждения от администратора.\n"
+            "После одобрения вы получите уведомление."
         )
+        await callback.answer()
+
+        from database import UserRepository, SessionLocal
+
+        db = SessionLocal()
+        user_repo = UserRepository(db)
+        user = user_repo.get_by_telegram_id(callback.from_user.id)
+        admin_ids = user_repo.get_admin_ids()
+        db.close()
+
+        if user:
+            from bot.bot import bot
+
+            for admin_id in admin_ids:
+                try:
+                    await bot.send_message(
+                        admin_id,
+                        f"🔔 <b>Новая заявка на регистрацию</b>\n\n"
+                        f"📋 ФИО: {user.full_name or 'Не указано'}\n"
+                        f"📧 Email: {user.email}\n"
+                        f"🏢 Компания: {company_display}",
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=get_admin_approval_keyboard(user.id),
+                    )
+                except Exception:
+                    pass
     else:
-        await message.answer(f'❌ {msg}\n\nПопробуйте ещё раз или нажмите "Отмена"')
+        await callback.message.edit_text(f"❌ {reg_msg}")
+        await callback.answer()
 
 
-@dp.callback_query(lambda c: c.data == "cancel_registration")
-async def callback_cancel_registration(callback: CallbackQuery, state: FSMContext):
-    """Обработчик отмены регистрации"""
-    await state.clear()
+@dp.callback_query(lambda c: c.data.startswith("admin_approve_"))
+async def callback_admin_approve(callback: CallbackQuery):
+    """Подтверждение регистрации пользователя (админ)"""
+    if not AuthService.is_admin(callback.from_user.id):
+        await callback.answer("❌ У вас нет прав администратора", show_alert=True)
+        return
+
+    user_id = int(callback.data.split("_")[-1])
+
+    from database import UserRepository, SessionLocal
+
+    db = SessionLocal()
+    user_repo = UserRepository(db)
+    user = user_repo.get_by_id(user_id)
+
+    if not user:
+        db.close()
+        await callback.answer("❌ Пользователь не найден", show_alert=True)
+        return
+
+    if not user.is_pending:
+        db.close()
+        await callback.answer("⚠️ Пользователь уже подтверждён", show_alert=True)
+        return
+
+    user_repo.approve_user(user)
+    db.close()
+
+    try:
+        from bot.bot import bot
+
+        await bot.send_message(
+            user.telegram_id,
+            "✅ <b>Регистрация подтверждена!</b>\n\n"
+            "Теперь вам доступны все функции системы.\n"
+            "Нажмите /start для начала работы.",
+            parse_mode=ParseMode.HTML,
+        )
+    except Exception:
+        pass
+
     await callback.message.edit_text(
-        "❌ Регистрация отменена.\n\nДля начала регистрации нажмите /start"
+        f"✅ <b>Регистрация подтверждена</b>\n\n"
+        f"📋 {user.full_name or 'Не указано'}\n"
+        f"📧 {user.email}",
+        parse_mode=ParseMode.HTML,
     )
-    await callback.answer()
+    await callback.answer("✅ Пользователь подтверждён")
+
+
+@dp.callback_query(lambda c: c.data.startswith("admin_reject_"))
+async def callback_admin_reject(callback: CallbackQuery):
+    """Отклонение регистрации пользователя (админ)"""
+    if not AuthService.is_admin(callback.from_user.id):
+        await callback.answer("❌ У вас нет прав администратора", show_alert=True)
+        return
+
+    user_id = int(callback.data.split("_")[-1])
+
+    from database import UserRepository, SessionLocal
+
+    db = SessionLocal()
+    user_repo = UserRepository(db)
+    user = user_repo.get_by_id(user_id)
+
+    if not user:
+        db.close()
+        await callback.answer("❌ Пользователь не найден", show_alert=True)
+        return
+
+    user_display = f"{user.full_name or 'Не указано'} ({user.email})"
+    telegram_id = user.telegram_id
+    user_repo.reject_user(user)
+    db.close()
+
+    try:
+        from bot.bot import bot
+
+        await bot.send_message(
+            telegram_id,
+            "❌ <b>Регистрация отклонена</b>\n\n"
+            "Ваша заявка на регистрацию была отклонена администратором.\n"
+            "Для повторной попытки нажмите /start.",
+            parse_mode=ParseMode.HTML,
+        )
+    except Exception:
+        pass
+
+    await callback.message.edit_text(
+        f"❌ <b>Регистрация отклонена</b>\n\n🗑️ {user_display}",
+        parse_mode=ParseMode.HTML,
+    )
+    await callback.answer("❌ Регистрация отклонена")
 
 
 @dp.callback_query(lambda c: c.data == "cancel_operation")
@@ -383,13 +509,35 @@ async def callback_menu(callback: CallbackQuery, state: FSMContext):
             await callback.answer()
         elif action == "documents":
             # Используем динамический файловый браузер
+            user = AuthService.get_user(callback.from_user.id)
+            if not user:
+                await callback.answer("❌ Пользователь не найден", show_alert=True)
+                return
+
+            # Определяем корневую папку по компании
+            base_docs_path = str(settings.documents_path)
+            if user.is_admin and not user.company:
+                # Админ без компании — видит всё
+                docs_path = base_docs_path
+            elif user.company and user.company in settings.COMPANY_ROOTS:
+                company_folder = settings.COMPANY_ROOTS[user.company]
+                docs_path = str(Path(base_docs_path) / company_folder)
+            else:
+                await callback.answer(
+                    "❌ Компания не назначена. Обратитесь к администратору.",
+                    show_alert=True,
+                )
+                return
+
+            # Проверяем что папка существует
+            docs_folder = Path(docs_path)
+            if not docs_folder.exists():
+                docs_folder.mkdir(parents=True, exist_ok=True)
+
             await state.set_state(FileBrowserState.browsing)
-            docs_path = f"{settings.documents_path}"
 
             # Сохраняем начальные данные в FSM
             import hashlib
-
-            docs_folder = Path(docs_path)
 
             folders = []
             files = []
@@ -409,7 +557,7 @@ async def callback_menu(callback: CallbackQuery, state: FSMContext):
                 relative_path="",  # Пустой путь = корень documents
                 folders=folders,
                 files=files,
-                root_path=docs_path,  # Сохраняем корневой путь для ограничения
+                root_path=docs_path,  # Корень ограничен папкой компании
             )
 
             await callback.message.edit_text(
@@ -574,6 +722,12 @@ async def callback_folder(callback: CallbackQuery, state: FSMContext):
         await callback.answer("❌ Папка не найдена", show_alert=True)
         return
 
+    # Проверяем, что не выходим за пределы root_path
+    root_path = data.get("root_path", "")
+    if not str(folder_path).startswith(str(root_path)):
+        await callback.answer("❌ Доступ запрещён", show_alert=True)
+        return
+
     # Формируем новый относительный путь
     if current_relative:
         new_relative = f"{current_relative}/{folder_name}"
@@ -633,6 +787,13 @@ async def callback_file(callback: CallbackQuery, state: FSMContext):
 
     if not file_obj.exists() or not file_obj.is_file():
         await callback.answer("❌ Файл не найден", show_alert=True)
+        return
+
+    # Проверяем, что не выходим за пределы root_path
+    data = await state.get_data()
+    root_path = data.get("root_path", "")
+    if not str(file_path).startswith(str(root_path)):
+        await callback.answer("❌ Доступ запрещён", show_alert=True)
         return
 
     try:
@@ -881,7 +1042,9 @@ async def process_admin_search_users(message: Message, state: FSMContext):
 
     msg = f"🔍 Найдено пользователей: {len(users)}\n\n"
     for user in users:
-        status = "✅ Верифицирован" if user.is_verified else "⏳ Ожидает"
+        from core.notification_service import get_user_status_text
+
+        status = get_user_status_text(user)
         admin_badge = " 👨‍💼" if user.is_admin else ""
         msg += (
             f"👤 {user.full_name or 'Не указано'}{admin_badge}\n"
@@ -916,12 +1079,15 @@ async def callback_admin_user(callback: CallbackQuery):
         await callback.answer("❌ Пользователь не найден", show_alert=True)
         return
 
-    status = "✅ Верифицирован" if user.is_verified else "⏳ Ожидает верификации"
+    from core.notification_service import get_user_status_text
+
+    status = get_user_status_text(user)
     admin_badge = "\n👨‍💼 Администратор" if user.is_admin else ""
     msg = (
         f"👤 <b>Профиль пользователя</b>\n\n"
         f"📋 ФИО: {user.full_name or 'Не указано'}\n"
         f"📧 Email: {user.email}\n"
+        f"🏢 Компания: {user.company or 'Не указана'}\n"
         f"📱 Telegram: @{user.username or 'Нет username'}\n"
         f"📅 Дата регистрации: {user.created_at.strftime('%d.%m.%Y')}\n"
         f"📌 {status}{admin_badge}"
@@ -1057,6 +1223,255 @@ async def process_admin_edit_email(message: Message, state: FSMContext):
         f"✅ Email обновлён: {email}",
         reply_markup=get_admin_menu_keyboard(),
     )
+
+
+@dp.callback_query(lambda c: c.data.startswith("admin_delete_user_"))
+async def callback_admin_delete_user(callback: CallbackQuery):
+    """Подтверждение удаления пользователя (админ)"""
+    if not AuthService.is_admin(callback.from_user.id):
+        await callback.answer("❌ У вас нет прав администратора", show_alert=True)
+        return
+
+    user_id = int(callback.data.split("_")[-1])
+
+    from database import UserRepository, SessionLocal
+
+    db = SessionLocal()
+    user_repo = UserRepository(db)
+    user = user_repo.get_by_id(user_id)
+    db.close()
+
+    if not user:
+        await callback.answer("❌ Пользователь не найден", show_alert=True)
+        return
+
+    await callback.message.edit_text(
+        f"⚠️ <b>Удаление пользователя</b>\n\n"
+        f"Вы уверены, что хотите удалить пользователя?\n"
+        f"📋 <b>{user.full_name or 'Не указано'}</b>\n"
+        f"📧 {user.email}\n\n"
+        f"Будут удалены все результаты тестов этого пользователя.\n"
+        f"Действие необратимо.",
+        parse_mode=ParseMode.HTML,
+        reply_markup=get_admin_delete_confirm_keyboard(user.id),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(lambda c: c.data.startswith("admin_confirm_delete_"))
+async def callback_admin_confirm_delete(callback: CallbackQuery):
+    """Подтверждённое удаление пользователя (админ)"""
+    if not AuthService.is_admin(callback.from_user.id):
+        await callback.answer("❌ У вас нет прав администратора", show_alert=True)
+        return
+
+    user_id = int(callback.data.split("_")[-1])
+
+    from database import UserRepository, SessionLocal
+
+    db = SessionLocal()
+    user_repo = UserRepository(db)
+    user = user_repo.get_by_id(user_id)
+
+    if not user:
+        db.close()
+        await callback.answer("❌ Пользователь не найден", show_alert=True)
+        return
+
+    user_display = f"{user.full_name or 'Не указано'} ({user.email})"
+    user_repo.delete_user(user)
+    db.close()
+
+    await callback.message.edit_text(
+        f"✅ <b>Пользователь удалён</b>\n\n"
+        f"🗑️ {user_display}\n\n"
+        f"Все связанные данные (результаты тестов) также удалены.",
+        parse_mode=ParseMode.HTML,
+        reply_markup=get_admin_menu_keyboard(),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(lambda c: c.data.startswith("admin_set_access_date_"))
+async def callback_admin_set_access_date(callback: CallbackQuery, state: FSMContext):
+    """Начало установки даты выдачи документа (админ)"""
+    if not AuthService.is_admin(callback.from_user.id):
+        await callback.answer("❌ У вас нет прав администратора", show_alert=True)
+        return
+
+    user_id = int(callback.data.split("_")[-1])
+    await state.update_data(edit_user_id=user_id)
+    await state.set_state(AdminState.setting_user_access_date)
+
+    await callback.message.edit_text(
+        "📅 <b>Установка даты выдачи документа</b>\n\n"
+        "Введите дату в формате <b>ДД.ММ.ГГГГ</b>\n"
+        "или нажмите кнопку «Сегодня»:",
+        parse_mode=ParseMode.HTML,
+        reply_markup=get_access_date_keyboard(user_id),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(lambda c: c.data.startswith("admin_set_today_"))
+async def callback_admin_set_today(callback: CallbackQuery, state: FSMContext):
+    """Установка сегодняшней даты выдачи документа (админ)"""
+    if not AuthService.is_admin(callback.from_user.id):
+        await callback.answer("❌ У вас нет прав администратора", show_alert=True)
+        return
+
+    user_id = int(callback.data.split("_")[-1])
+
+    from database import UserRepository, SessionLocal
+
+    db = SessionLocal()
+    user_repo = UserRepository(db)
+    user = user_repo.get_by_id(user_id)
+
+    if not user:
+        db.close()
+        await callback.answer("❌ Пользователь не найден", show_alert=True)
+        return
+
+    from datetime import datetime, timedelta
+
+    now = datetime.now()
+    expiry = now + timedelta(days=358)
+    user_repo.set_access_date(user, now)
+    db.close()
+    await state.clear()
+
+    await callback.message.edit_text(
+        f"✅ <b>Дата выдачи документа установлена</b>\n\n"
+        f"📋 {user.full_name or 'Не указано'}\n"
+        f"📅 Дата: {now.strftime('%d.%m.%Y')}\n"
+        f"⏰ Допуск действителен 358 дней (до {expiry.strftime('%d.%m.%Y')})",
+        parse_mode=ParseMode.HTML,
+        reply_markup=get_admin_menu_keyboard(),
+    )
+    await callback.answer("✅ Дата установлена")
+
+
+@dp.message(StateFilter(AdminState.setting_user_access_date))
+async def process_admin_access_date(message: Message, state: FSMContext):
+    """Обработчик ввода даты выдачи документа (админ)"""
+    if not AuthService.is_admin(message.from_user.id):
+        await state.clear()
+        await message.answer("❌ У вас нет прав администратора")
+        return
+
+    date_str = message.text.strip()
+
+    from datetime import datetime
+
+    try:
+        date = datetime.strptime(date_str, "%d.%m.%Y")
+    except ValueError:
+        await message.answer(
+            "❌ Неверный формат даты.\n\n"
+            "Введите дату в формате <b>ДД.ММ.ГГГГ</b>\n"
+            "Например: 15.03.2026",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    data = await state.get_data()
+    user_id = data.get("edit_user_id")
+    await state.clear()
+
+    from database import UserRepository, SessionLocal
+
+    db = SessionLocal()
+    user_repo = UserRepository(db)
+    user = user_repo.get_by_id(user_id)
+
+    if not user:
+        db.close()
+        await message.answer("❌ Пользователь не найден.")
+        return
+
+    user_repo.set_access_date(user, date)
+    db.close()
+
+    from datetime import timedelta
+
+    expiry = date + timedelta(days=358)
+    await message.answer(
+        f"✅ <b>Дата выдачи документа установлена</b>\n\n"
+        f"📋 {user.full_name or 'Не указано'}\n"
+        f"📅 Дата: {date.strftime('%d.%m.%Y')}\n"
+        f"⏰ Допуск действителен 358 дней (до {expiry.strftime('%d.%m.%Y')})",
+        parse_mode=ParseMode.HTML,
+        reply_markup=get_admin_menu_keyboard(),
+    )
+
+
+@dp.callback_query(lambda c: c.data.startswith("admin_edit_company_"))
+async def callback_admin_edit_company(callback: CallbackQuery, state: FSMContext):
+    """Начало изменения компании пользователя (админ)"""
+    if not AuthService.is_admin(callback.from_user.id):
+        await callback.answer("❌ У вас нет прав администратора", show_alert=True)
+        return
+
+    user_id = int(callback.data.split("_")[-1])
+
+    from bot.keyboards.inline import get_admin_company_keyboard
+
+    await callback.message.edit_text(
+        "🏢 <b>Выбор компании</b>\n\nВыберите компанию для пользователя:",
+        parse_mode=ParseMode.HTML,
+        reply_markup=get_admin_company_keyboard(user_id),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(lambda c: c.data.startswith("admin_set_company_"))
+async def callback_admin_set_company(callback: CallbackQuery):
+    """Установка компании пользователя (админ)"""
+    if not AuthService.is_admin(callback.from_user.id):
+        await callback.answer("❌ У вас нет прав администратора", show_alert=True)
+        return
+
+    # Parse: admin_set_company_{company_key}_{user_id}
+    parts = callback.data.split("_")
+    # parts: ["admin", "set", "company", company_key, user_id] or ["admin", "set", "company", "none", user_id]
+    company_key = parts[3]
+    user_id = int(parts[4])
+
+    from database import UserRepository, SessionLocal
+
+    db = SessionLocal()
+    user_repo = UserRepository(db)
+    user = user_repo.get_by_id(user_id)
+
+    if not user:
+        db.close()
+        await callback.answer("❌ Пользователь не найден", show_alert=True)
+        return
+
+    if company_key == "none":
+        user.company = None
+    else:
+        user.company = company_key
+    db.commit()
+    db.refresh(user)
+
+    company_display = {
+        "company1": "Компания 1",
+        "company2": "Компания 2",
+        None: "Не указана",
+    }.get(user.company, user.company or "Не указана")
+
+    db.close()
+
+    await callback.message.edit_text(
+        f"✅ <b>Компания изменена</b>\n\n"
+        f"👤 {user.full_name or 'Не указано'}\n"
+        f"🏢 Компания: {company_display}",
+        parse_mode=ParseMode.HTML,
+        reply_markup=get_admin_user_keyboard(user.id),
+    )
+    await callback.answer("✅ Компания обновлена")
 
 
 @dp.callback_query(lambda c: c.data == "admin_manage_admins")
@@ -1258,6 +1673,12 @@ async def main():
 
         SettingsService.initialize_from_env()
         logger.info("Settings initialized successfully")
+
+        # Запуск планировщика уведомлений
+        from bot.scheduler import run_scheduler
+
+        asyncio.create_task(run_scheduler(bot))
+        logger.info("Scheduler started")
 
         # Удаляем webhook и запускаем long polling
         await bot.delete_webhook(drop_pending_updates=True)

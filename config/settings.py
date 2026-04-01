@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     # Security
     security_code: str = "123456"  # Код, который админ сообщает пользователям
 
+    COMPANY_ROOTS: dict = {"company1": "Folder1", "company2": "Folder2"}
+
     # Paths
     @property
     def db_path(self) -> Path:

@@ -1,7 +1,8 @@
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.orm import sessionmaker
 from pathlib import Path
 from config import settings
+from database.base import Base
 
 # Создаём директорию для БД если её нет
 settings.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -14,9 +15,6 @@ engine = create_engine(
 
 # Создаём сессию
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-# Базовый класс моделей
-Base = declarative_base()
 
 
 def init_db():

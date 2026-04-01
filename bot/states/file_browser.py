@@ -19,6 +19,8 @@ class AdminState(StatesGroup):
     searching_users = State()  # Ввод поискового запроса пользователей
     editing_user_full_name = State()  # Редактирование ФИО пользователя
     editing_user_email = State()  # Редактирование email пользователя
+    setting_user_access_date = State()  # Ввод даты выдачи документа
+    editing_user_company = State()  # Выбор компании пользователя
 
 
 class ProfileState(StatesGroup):

@@ -6,4 +6,4 @@ class RegistrationForm(StatesGroup):
 
     waiting_for_full_name = State()  # Ожидание ввода ФИО
     waiting_for_email = State()  # Ожидание ввода email
-    waiting_for_code = State()  # Ожидание ввода кода безопасности
+    waiting_for_company = State()  # Выбор компании

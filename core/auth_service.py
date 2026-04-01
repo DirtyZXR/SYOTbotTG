@@ -24,7 +24,7 @@ class AuthService:
         Возвращает (success, message)
         """
         # Проверяем, что email с корпоративным доменом
-        allowed_domains = ["intellectika.ru"]  # Пример корпоративного домена
+        allowed_domains = ["intellectika.ru"]
         if not any(email.endswith(f"@{domain}") for domain in allowed_domains):
             return False, "Email должен быть с корпоративного домена"
 
@@ -45,91 +45,14 @@ class AuthService:
         email: str,
         full_name: Optional[str] = None,
         username: Optional[str] = None,
+        company: Optional[str] = None,
     ) -> tuple[bool, str]:
         """
-        Регистрация пользователя
+        Регистрация пользователя (создаёт запись с is_pending=True)
         Возвращает (success, message)
         """
         db = SessionLocal()
         user_repo = UserRepository(db)
-
-        # Проверяем, что email с корпоративным доменом
-        allowed_domains = ["intellectika.ru"]  # Пример корпоративного домена
-        if not any(email.endswith(f"@{domain}") for domain in allowed_domains):
-            db.close()
-            return False, "Email должен быть с корпоративного домена"
-
-        # Проверяем, не зарегистрирован ли уже пользователь
-        existing_user = user_repo.get_by_email(email)
-        if existing_user:
-            db.close()
-            return False, "Пользователь с таким email уже зарегистрирован"
-
-        # Проверяем, не зарегистрирован ли уже этот telegram_id
-        existing_telegram = user_repo.get_by_telegram_id(telegram_id)
-        if existing_telegram:
-            db.close()
-            return False, "Вы уже зарегистрированы в системе"
-
-        # Создаём пользователя (пока не верифицирован)
-        user = user_repo.create_user(
-            telegram_id=telegram_id,
-            email=email,
-            full_name=full_name,
-            username=username,
-        )
-        db.close()
-        return True, "Пользователь создан. Ожидайте верификации кодом безопасности"
-
-    @staticmethod
-    def verify_user(telegram_id: int, code: str) -> tuple[bool, str]:
-        """
-        Верификация пользователя по коду безопасности
-        Возвращает (success, message)
-        """
-        db = SessionLocal()
-        user_repo = UserRepository(db)
-
-        user = user_repo.get_by_telegram_id(telegram_id)
-        if not user:
-            db.close()
-            return False, "Пользователь не найден. Сначала зарегистрируйтесь"
-
-        if user.is_verified:
-            db.close()
-            return False, "Вы уже верифицированы"
-
-        # Проверяем код безопасности (получаем из БД)
-        security_code = AuthService.get_security_code()
-        if code != security_code:
-            db.close()
-            return False, "Неверный код безопасности"
-
-        # Верифицируем пользователя
-        user_repo.verify_user(user)
-        db.close()
-        return True, "Верификация успешна! Теперь вам доступны документы и тесты"
-
-    @staticmethod
-    def register_and_verify(
-        telegram_id: int,
-        email: str,
-        code: str,
-        full_name: Optional[str] = None,
-        username: Optional[str] = None,
-    ) -> tuple[bool, str]:
-        """
-        Регистрация и верификация пользователя одним действием
-        Возвращает (success, message)
-        """
-        db = SessionLocal()
-        user_repo = UserRepository(db)
-
-        # Проверяем код безопасности (получаем из БД)
-        security_code = AuthService.get_security_code()
-        if code != security_code:
-            db.close()
-            return False, "Неверный код безопасности"
 
         # Проверяем, что email с корпоративным доменом
         allowed_domains = ["intellectika.ru"]
@@ -149,28 +72,41 @@ class AuthService:
             db.close()
             return False, "Вы уже зарегистрированы в системе"
 
-        # Создаём и сразу верифицируем пользователя
+        # Создаём пользователя со статусом pending
         user = user_repo.create_user(
             telegram_id=telegram_id,
             email=email,
             full_name=full_name,
             username=username,
+            is_pending=True,
+            company=company,
         )
-        user_repo.verify_user(user)
         db.close()
-        return True, "Регистрация успешна! Теперь вам доступны документы и тесты"
+        return True, "Заявка отправлена"
 
     @staticmethod
     def is_authorized(telegram_id: int) -> bool:
-        """Проверка авторизации пользователя"""
+        """Проверка авторизации пользователя (существует в БД и подтверждён админом)"""
         db = SessionLocal()
         user_repo = UserRepository(db)
 
         user = user_repo.get_by_telegram_id(telegram_id)
-        is_auth = user and user.is_verified
+        is_auth = user and not user.is_pending
 
         db.close()
         return is_auth
+
+    @staticmethod
+    def is_pending(telegram_id: int) -> bool:
+        """Проверка, ожидает ли пользователь подтверждения"""
+        db = SessionLocal()
+        user_repo = UserRepository(db)
+
+        user = user_repo.get_by_telegram_id(telegram_id)
+        result = user and user.is_pending
+
+        db.close()
+        return result
 
     @staticmethod
     def get_user(telegram_id: int) -> Optional[User]:

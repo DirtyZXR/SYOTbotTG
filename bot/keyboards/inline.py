@@ -145,6 +145,25 @@ def get_cancel_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
+def get_admin_approval_keyboard(pending_user_id: int) -> InlineKeyboardMarkup:
+    """Клавиатура подтверждения регистрации пользователя"""
+    buttons = [
+        [
+            InlineKeyboardButton(
+                text="✅ Подтвердить",
+                callback_data=f"admin_approve_{pending_user_id}",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="❌ Отклонить",
+                callback_data=f"admin_reject_{pending_user_id}",
+            ),
+        ],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
 def get_admin_menu_keyboard() -> InlineKeyboardMarkup:
     """Клавиатура админского меню"""
     buttons = [
@@ -180,7 +199,7 @@ def get_manage_admins_keyboard(users) -> InlineKeyboardMarkup:
 
     for user in users:
         # Показываем только верифицированных пользователей
-        if user.is_verified:
+        if not user.is_pending:
             status = "👨‍💼" if user.is_admin else "👤"
             action = "remove_admin" if user.is_admin else "add_admin"
             button_text = f"{status} {user.full_name or user.email}"
@@ -238,17 +257,70 @@ def get_admin_user_keyboard(user_id: int) -> InlineKeyboardMarkup:
         [
             InlineKeyboardButton(
                 text="✏️ Изменить ФИО", callback_data=f"admin_edit_name_{user_id}"
-            )
+            ),
+            InlineKeyboardButton(
+                text="📧 Изменить email", callback_data=f"admin_edit_email_{user_id}"
+            ),
         ],
         [
             InlineKeyboardButton(
-                text="📧 Изменить email", callback_data=f"admin_edit_email_{user_id}"
-            )
+                text="📅 Выдать документ",
+                callback_data=f"admin_set_access_date_{user_id}",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="🏢 Изменить компанию",
+                callback_data=f"admin_edit_company_{user_id}",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="🗑️ Удалить пользователя",
+                callback_data=f"admin_delete_user_{user_id}",
+            ),
         ],
         [
             InlineKeyboardButton(
                 text="🔙 К результатам поиска", callback_data="admin_search_users"
             )
+        ],
+    ]
+
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_admin_delete_confirm_keyboard(user_id: int) -> InlineKeyboardMarkup:
+    """Клавиатура подтверждения удаления пользователя"""
+    buttons = [
+        [
+            InlineKeyboardButton(
+                text="✅ Да, удалить", callback_data=f"admin_confirm_delete_{user_id}"
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="🔙 Отмена", callback_data=f"admin_user_{user_id}"
+            ),
+        ],
+    ]
+
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_access_date_keyboard(user_id: int) -> InlineKeyboardMarkup:
+    """Клавиатура для ввода даты выдачи документа"""
+    buttons = [
+        [
+            InlineKeyboardButton(
+                text="📅 Сегодня",
+                callback_data=f"admin_set_today_{user_id}",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="❌ Отмена", callback_data=f"admin_user_{user_id}"
+            ),
         ],
     ]
 
@@ -271,4 +343,43 @@ def get_profile_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="🔙 В главное меню", callback_data="back_to_menu")],
     ]
 
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_admin_company_keyboard(user_id: int) -> InlineKeyboardMarkup:
+    """Клавиатура выбора компании для администратора"""
+    buttons = [
+        [
+            InlineKeyboardButton(
+                text="Компания 1",
+                callback_data=f"admin_set_company_company1_{user_id}",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="Компания 2",
+                callback_data=f"admin_set_company_company2_{user_id}",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="❌ Убрать компанию",
+                callback_data=f"admin_set_company_none_{user_id}",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="🔙 Отмена", callback_data=f"admin_user_{user_id}"
+            ),
+        ],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_company_selection_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура выбора компании при регистрации"""
+    buttons = [
+        [InlineKeyboardButton(text="Компания 1", callback_data="reg_company_company1")],
+        [InlineKeyboardButton(text="Компания 2", callback_data="reg_company_company2")],
+    ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
