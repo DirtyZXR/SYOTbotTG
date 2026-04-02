@@ -598,6 +598,21 @@ async def callback_menu(callback: CallbackQuery, state: FSMContext):
             from core.test_service import is_group_available, get_group3_unlock_date
             from datetime import datetime
 
+            # Проверяем, сдал ли пользователь уже 3 группу
+            if user.group3_passed_at:
+                msg = (
+                    "✅ <b>III группа до 1000В сдана.</b>\n\n"
+                    "Больше тестов нет. Обновлением удостоверения будет заниматься администратор."
+                )
+                # Используем get_back_to_menu_button для добавления кнопки "Назад"
+                await callback.message.edit_text(
+                    msg,
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=get_back_to_menu_button(),
+                )
+                await callback.answer()
+                return
+
             # Проверяем статус
             msg = ""
             if user.group2_passed_at and not is_group_available(user, 3):
