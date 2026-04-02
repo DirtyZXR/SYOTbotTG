@@ -91,11 +91,19 @@ def get_test_groups_keyboard(user) -> InlineKeyboardMarkup:
     buttons = []
     if is_group_available(user, 2):
         buttons.append(
-            [InlineKeyboardButton(text="📋 Группа 2", callback_data="test_start_2")]
+            [
+                InlineKeyboardButton(
+                    text="📋 II группа до 1000В", callback_data="test_start_2"
+                )
+            ]
         )
     if is_group_available(user, 3):
         buttons.append(
-            [InlineKeyboardButton(text="📋 Группа 3", callback_data="test_start_3")]
+            [
+                InlineKeyboardButton(
+                    text="📋 III группа до 1000В", callback_data="test_start_3"
+                )
+            ]
         )
 
     buttons.append(
@@ -197,11 +205,6 @@ def get_admin_menu_keyboard() -> InlineKeyboardMarkup:
         [
             InlineKeyboardButton(
                 text="👨‍💼 Управление админами", callback_data="admin_manage_admins"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                text="📝 Сканировать тесты", callback_data="admin_load_tests"
             )
         ],
         [InlineKeyboardButton(text="🔙 В главное меню", callback_data="back_to_menu")],
@@ -408,5 +411,18 @@ def get_test_cancel_keyboard() -> InlineKeyboardMarkup:
     """Клавиатура для отмены теста"""
     buttons = [
         [InlineKeyboardButton(text="❌ Прервать тест", callback_data="test_cancel")]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_admin_test_notification_keyboard(user_id: int) -> InlineKeyboardMarkup:
+    """Клавиатура для уведомления администратора о сдаче теста."""
+    buttons = [
+        [
+            InlineKeyboardButton(
+                text="📅 Выдать/обновить документ",
+                callback_data=f"admin_grant_document_{user_id}",
+            )
+        ]
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)

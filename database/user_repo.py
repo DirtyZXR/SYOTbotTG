@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
+from sqlalchemy import or_, func
 from models.user import User
 from typing import Optional, List
 from datetime import datetime, timedelta
@@ -223,6 +223,23 @@ class UserRepository:
                 User.access_granted_at + timedelta(days=90) <= threshold,
                 User.access_granted_at + timedelta(days=90) > now,
                 getattr(User, notified_field) == False,
+            )
+            .all()
+        )
+
+    def get_users_with_expired_group3(self) -> List[User]:
+        """Пользователи, у которых истекает 3 группа (прошло 358 дней)"""
+        now = datetime.now()
+        # Ищем тех, кто сдал тест ровно 358 дней назад
+        check_date = now.date() - timedelta(days=358)
+
+        return (
+            self.db.query(User)
+            .filter(
+                User.is_admin == False,
+                User.company != "consulting",
+                User.group3_passed_at != None,
+                func.date(User.group3_passed_at) == check_date,
             )
             .all()
         )
