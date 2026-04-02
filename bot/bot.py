@@ -1653,19 +1653,26 @@ async def callback_back_to_admin_menu(callback: CallbackQuery):
     await callback.answer()
 
 
-@dp.callback_query(lambda c: c.data == "admin_load_tests")
-async def callback_admin_load_tests(callback: CallbackQuery):
-    """Сканировать тесты из папки"""
+@dp.callback_query(lambda c: c.data.startswith("admin_manage_admins"))
+async def callback_admin_manage_admins(callback: CallbackQuery, state: FSMContext):
+    """Показывает список пользователей для управления админскими правами"""
     if not AuthService.is_admin(callback.from_user.id):
         await callback.answer("❌ У вас нет прав администратора", show_alert=True)
         return
 
+    from database import UserRepository, SessionLocal
+
+    db = SessionLocal()
+    user_repo = UserRepository(db)
+    # Получаем всех верифицированных пользователей
+    users = user_repo.get_verified_users()
+    db.close()
+
     await callback.message.edit_text(
-        "📝 <b>Сканирование тестов</b>\n\n"
-        "Загрузка тестов через команду /load_tests временно отключена.\n"
-        "Обратитесь к разработчику.",
+        "👨‍💼 <b>Управление администраторами</b>\n\n"
+        "Нажмите на пользователя, чтобы добавить или убрать права администратора.",
         parse_mode=ParseMode.HTML,
-        reply_markup=get_admin_menu_keyboard(),
+        reply_markup=get_manage_admins_keyboard(users),
     )
     await callback.answer()
 
