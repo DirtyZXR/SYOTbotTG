@@ -32,6 +32,7 @@ from bot.keyboards import (
     get_profile_keyboard,
     get_company_selection_keyboard,
     get_test_cancel_keyboard,
+    get_admin_test_notification_keyboard,
 )
 from bot.states import (
     RegistrationForm,
@@ -66,8 +67,9 @@ async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
 
     if AuthService.is_authorized(user_id):
+        welcome_message = await _get_welcome_message(user_id)
         await message.answer(
-            "👋 Добро пожаловать!\n\nВыберите действие:",
+            welcome_message,
             reply_markup=get_main_menu_keyboard(user_id),
         )
     elif AuthService.is_pending(user_id):
@@ -414,6 +416,24 @@ async def callback_cancel_operation(callback: CallbackQuery, state: FSMContext):
 # ==================== Helper Functions ====================
 
 
+async def _get_welcome_message(user_id: int) -> str:
+    """Формирует приветственное сообщение с информацией о статусе 3 группы."""
+    from datetime import datetime, timedelta
+
+    user = AuthService.get_user(user_id)
+    message = "👋 Добро пожаловать!\n\nВыберите действие:"
+
+    if user and user.group3_passed_at:
+        expiry_date = user.group3_passed_at + timedelta(days=365)
+        days_left = (expiry_date - datetime.now()).days
+        if days_left > 0:
+            message = (
+                f"✅ III группа до 1000В сдана, осталось {days_left} дн.\n\n"
+                "Выберите действие:"
+            )
+    return message
+
+
 async def go_back_to_main_menu(callback: CallbackQuery, state: FSMContext):
     """Функция для возврата в главное меню"""
     # Сбрасываем состояние файлового браузера, если оно активно
@@ -421,8 +441,9 @@ async def go_back_to_main_menu(callback: CallbackQuery, state: FSMContext):
     if current_state == FileBrowserState.browsing:
         await state.clear()
 
+    welcome_message = await _get_welcome_message(callback.from_user.id)
     await callback.message.edit_text(
-        "Выберите действие:",
+        welcome_message,
         reply_markup=get_main_menu_keyboard(callback.from_user.id),
     )
 
@@ -587,9 +608,9 @@ async def callback_menu(callback: CallbackQuery, state: FSMContext):
                     else 0
                 )
                 if days_left > 0:
-                    msg = f"✅ Группа 2 сдана.\n\n⏳ Группа 3 откроется через {days_left} дн."
+                    msg = f"✅ II группа до 1000В сдана.\n\n⏳ III группа до 1000В откроется через {days_left} дн."
                 else:
-                    msg = "✅ Группа 2 сдана.\n\n⏳ Группа 3 скоро будет доступна. Попробуйте зайти позже."
+                    msg = "✅ II группа до 1000В сдана.\n\n⏳ III группа до 1000В скоро будет доступна. Попробуйте зайти позже."
 
             elif not is_group_available(user, 2) and not is_group_available(user, 3):
                 msg = "✅ Вы уже сдали все доступные группы тестов."
@@ -671,7 +692,8 @@ async def callback_test_start(callback: CallbackQuery, state: FSMContext):
     )
 
     await show_question(callback, state)
-    await callback.answer(f"Начинаем тест для группы {group}!")
+    group_name = "II группа до 1000В" if group == 2 else "III группа до 1000В"
+    await callback.answer(f"Начинаем тест для {group_name}!")
 
 
 @dp.callback_query(
@@ -737,6 +759,9 @@ async def callback_test_answer(callback: CallbackQuery, state: FSMContext):
                 # Отправляем уведомление админам в случае успеха
                 admin_ids = user_repo.get_admin_ids()
                 group = data["test_group"]
+                group_name = (
+                    "II группа до 1000В" if group == 2 else "III группа до 1000В"
+                )
                 for admin_id in admin_ids:
                     try:
                         action_text = (
@@ -749,10 +774,11 @@ async def callback_test_answer(callback: CallbackQuery, state: FSMContext):
                             f"🎉 <b>Тест успешно сдан!</b>\n\n"
                             f"👤 {user.full_name}\n"
                             f"📧 {user.email}\n"
-                            f"📋 Группа {group}\n"
+                            f"📋 {group_name}\n"
                             f"📊 Результат: {results['correct']}/{results['total']} ({results['percentage']:.1f}%)\n\n"
                             f"📦 {action_text}",
                             parse_mode=ParseMode.HTML,
+                            reply_markup=get_admin_test_notification_keyboard(user.id),
                         )
                     except Exception as e:
                         logger.warning(
@@ -788,6 +814,18 @@ async def callback_test_answer(callback: CallbackQuery, state: FSMContext):
             await asyncio.sleep(
                 0.2
             )  # Небольшая задержка, чтобы сообщения пришли по порядку
+
+        # 3. Отправить доп. уведомление после сдачи 2 группы
+        if results["passed"] and data["test_group"] == 2:
+            await bot.send_message(
+                chat_id=callback.from_user.id,
+                text=(
+                    "Поздравляем с успешной сдачей!\n\n"
+                    "Обратите внимание: через 90 дней вам откроется доступ к сдаче "
+                    "<b>III группы до 1000В</b>."
+                ),
+                parse_mode=ParseMode.HTML,
+            )
 
         await state.clear()
         await callback.answer("Тест завершен!")
@@ -1406,7 +1444,7 @@ async def callback_admin_confirm_delete(callback: CallbackQuery):
 
 @dp.callback_query(lambda c: c.data.startswith("admin_set_access_date_"))
 async def callback_admin_set_access_date(callback: CallbackQuery, state: FSMContext):
-    """Начало установки даты выдачи документа"""
+    """Начало установки даты выдачи документа (из профиля пользователя)"""
     if not AuthService.is_admin(callback.from_user.id):
         await callback.answer("❌ У вас нет прав администратора", show_alert=True)
         return
@@ -1417,6 +1455,29 @@ async def callback_admin_set_access_date(callback: CallbackQuery, state: FSMCont
     await state.update_data(edit_user_id=user_id)
 
     await callback.message.edit_text(
+        "📅 <b>Установка даты выдачи</b>\n\n"
+        "Введите дату в формате ДД.ММ.ГГГГ или нажмите 'Сегодня'",
+        parse_mode=ParseMode.HTML,
+        reply_markup=get_access_date_keyboard(user_id),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(lambda c: c.data.startswith("admin_grant_document_"))
+async def callback_admin_grant_document(callback: CallbackQuery, state: FSMContext):
+    """Начало установки даты выдачи документа (из уведомления)"""
+    if not AuthService.is_admin(callback.from_user.id):
+        await callback.answer("❌ У вас нет прав администратора", show_alert=True)
+        return
+
+    user_id = int(callback.data.split("_")[-1])
+
+    await state.set_state(AdminState.setting_user_access_date)
+    await state.update_data(edit_user_id=user_id)
+    # Удаляем клавиатуру из исходного сообщения
+    await callback.message.edit_reply_markup(reply_markup=None)
+
+    await callback.message.answer(
         "📅 <b>Установка даты выдачи</b>\n\n"
         "Введите дату в формате ДД.ММ.ГГГГ или нажмите 'Сегодня'",
         parse_mode=ParseMode.HTML,

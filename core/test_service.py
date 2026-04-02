@@ -78,8 +78,9 @@ def calculate_results(questions: List[Dict], answers: Dict[int, str]) -> Dict:
 def format_results_header(results: Dict, user_name: str, group: int) -> str:
     """Форматировать заголовок с результатами теста"""
     status = "✅ СДАНО" if results["passed"] else "❌ НЕ СДАНО"
+    group_name = "II группа до 1000В" if group == 2 else "III группа до 1000В"
     return (
-        f"📝 <b>Результаты теста — Группа {group}</b>\n"
+        f"📝 <b>Результаты теста — {group_name}</b>\n"
         f"👤 {user_name}\n"
         f"📊 {results['correct']}/{results['total']} ({results['percentage']:.1f}%) — {status}\n\n"
         f"Ниже приведена детализация ответов:"
