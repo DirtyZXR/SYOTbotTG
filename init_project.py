@@ -38,9 +38,6 @@ def init_project():
             f"{pip_path} install -r requirements.txt", "Установка зависимостей"
         )
 
-    # 3. Создание структуры папок
-    run_command("python setup_directories.py", "Создание структуры папок")
-
     # 4. Создание .env файла
     if not Path(".env").exists():
         with open(".env", "w", encoding="utf-8") as f:
@@ -68,7 +65,6 @@ SECURITY_CODE=123456
     print("3. Запустите бота: python main.py")
     print("\n📚 Документация:")
     print("   - README.md - Общая информация")
-    print("   - docs/ARCHITECTURE.md - Архитектура проекта")
     print("\n" + "=" * 50)
 
 
