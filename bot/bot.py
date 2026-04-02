@@ -1683,6 +1683,12 @@ async def callback_admin_manage_admins(callback: CallbackQuery, state: FSMContex
 async def main():
     """Основная функция запуска бота"""
     init_db()  # Инициализация базы данных
+
+    # Инициализация первого администратора из .env
+    from core.settings_service import SettingsService
+
+    SettingsService.initialize_from_env()
+
     logger.info("Bot is starting...")
     try:
         await dp.start_polling(bot)
