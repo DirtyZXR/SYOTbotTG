@@ -31,11 +31,15 @@ def init_project():
 
     # 2. Установка зависимостей
     if Path("venv").exists():
+        # Используем абсолютный путь для надежности
+        venv_path = Path("venv").resolve()
         pip_path = (
-            "venv/Scripts/pip" if sys.platform == "win32" else "venv/bin/pip"
+            venv_path / "Scripts" / "pip"
+            if sys.platform == "win32"
+            else venv_path / "bin" / "pip"
         )
         run_command(
-            f"{pip_path} install -r requirements.txt", "Установка зависимостей"
+            f'"{pip_path}" install -r requirements.txt', "Установка зависимостей"
         )
 
     # 4. Создание .env файла
