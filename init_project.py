@@ -50,7 +50,6 @@ def init_project():
 ADMIN_ID=your_telegram_admin_id_here
 DATABASE_PATH=./data/bot.db
 DOCUMENTS_PATH=./data/documents
-SECURITY_CODE=123456
 """
             )
         print("✅ Файл .env создан")
