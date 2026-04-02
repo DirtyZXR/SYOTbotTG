@@ -51,6 +51,14 @@ class UserRepository:
         """Получение всех пользователей"""
         return self.db.query(User).all()
 
+    def get_all_verified_users(self) -> List[User]:
+        """Получение всех верифицированных пользователей, кроме админов"""
+        return (
+            self.db.query(User)
+            .filter(User.is_verified == True, User.is_admin == False)
+            .all()
+        )
+
     def get_admin_ids(self) -> List[int]:
         """Получение telegram_id всех администраторов"""
         return [
