@@ -202,11 +202,11 @@ def get_admin_menu_keyboard() -> InlineKeyboardMarkup:
                 text="🔍 Поиск пользователей", callback_data="admin_search_users"
             )
         ],
-        [
-            InlineKeyboardButton(
-                text="👨‍💼 Управление админами", callback_data="admin_manage_admins"
-            )
-        ],
+        # [
+        #     InlineKeyboardButton(
+        #         text="👨‍💼 Управление админами", callback_data="admin_manage_admins"
+        #     )
+        # ],
         [InlineKeyboardButton(text="🔙 В главное меню", callback_data="back_to_menu")],
     ]
 

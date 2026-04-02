@@ -1681,13 +1681,16 @@ async def callback_admin_manage_admins(callback: CallbackQuery, state: FSMContex
 
 
 async def main():
-    """Главная функция"""
-    # Инициализируем базу данных
-    init_db()
-
-    # Запускаем бота
-    await bot.delete_webhook(drop_pending_updates=True)
-    await dp.start_polling(bot)
+    """Основная функция запуска бота"""
+    init_db()  # Инициализация базы данных
+    logger.info("Bot is starting...")
+    try:
+        await dp.start_polling(bot)
+    except (KeyboardInterrupt, SystemExit, asyncio.CancelledError):
+        logger.info("Bot is shutting down...")
+    finally:
+        await bot.session.close()
+        logger.info("Bot has been shut down.")
 
 
 if __name__ == "__main__":
