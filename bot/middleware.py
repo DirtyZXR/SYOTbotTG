@@ -92,5 +92,7 @@ class AuthMiddleware(BaseMiddleware):
         elif isinstance(event, CallbackQuery):
             if event.data in self.PUBLIC_CALLBACKS:
                 return True
+            if event.data and event.data.startswith("reg_company_"):
+                return True
 
         return False
