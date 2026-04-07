@@ -421,17 +421,26 @@ async def _get_welcome_message(user_id: int) -> str:
     from datetime import datetime, timedelta
 
     user = AuthService.get_user(user_id)
-    message = "👋 Добро пожаловать!\n\nВыберите действие:"
+    base_message = (
+        "👋 Добро пожаловать в систему охраны труда!\n\n"
+        "Я — Ваш цифровой помощник.\n\n"
+        "Моя задача — помочь Вам разобраться с документацией и иметь её всегда при себе.\n\n"
+        "Я помогаю автоматизировать рутинные процессы:\n"
+        "✅ Проводить тестирование\n"
+        "✅ Предоставлять актуальную нормативную базу компании\n"
+        "✅ Информировать о предстоящих событиях\n"
+        " Нажми кнопку «Старт» для начала работы."
+    )
 
     if user and user.group3_passed_at:
         expiry_date = user.group3_passed_at + timedelta(days=365)
         days_left = (expiry_date - datetime.now()).days
         if days_left > 0:
-            message = (
+            return (
                 f"✅ III группа до 1000В сдана, осталось {days_left} дн.\n\n"
-                "Выберите действие:"
+                f"{base_message}"
             )
-    return message
+    return base_message
 
 
 async def go_back_to_main_menu(callback: CallbackQuery, state: FSMContext):
@@ -947,28 +956,16 @@ async def callback_back_folder(callback: CallbackQuery, state: FSMContext):
     relative_path = data.get("relative_path", "")
     root_path = Path(data.get("root_path", str(settings.documents_path)))
 
-    # Проверяем, что мы не выше корневой папки
     current_obj = Path(current_path)
-    if current_obj.parent == root_path:
-        # Мы в подпапке корня - возвращаемся в главное меню
-        await go_back_to_main_menu(callback, state)
-        return
 
     # Если мы не в корне - возвращаемся на уровень выше
     if relative_path:
         parent_path = current_obj.parent
         parent_relative = (
             str(Path(relative_path).parent)
-            if Path(relative_path).parent != Path(".")
+            if str(Path(relative_path).parent) != "."
             else ""
         )
-
-        # Проверяем, что не вышли выше корня
-        if parent_path == root_path:
-            await go_back_to_main_menu(callback, state)
-            return
-
-        parent_name = parent_path.name
 
         import hashlib
 
@@ -992,12 +989,18 @@ async def callback_back_folder(callback: CallbackQuery, state: FSMContext):
             files=new_files,
         )
 
+        title = (
+            "📚 Документы:\n\nВыберите папку:"
+            if not parent_relative
+            else f"📁 {parent_path.name}\n\nВыберите папку или файл:"
+        )
+
         await callback.message.edit_text(
-            f"📁 {parent_name}\n\nВыберите папку или файл:",
+            title,
             reply_markup=get_folder_keyboard(str(parent_path), parent_relative),
         )
     else:
-        # В корне - возвращаемся в главное меню
+        # В корне документов кнопка называется "В главное меню", но на всякий случай
         await go_back_to_main_menu(callback, state)
 
     await callback.answer()
