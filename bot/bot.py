@@ -823,9 +823,6 @@ async def process_menu_tests(message: Message, state: FSMContext):
 async def process_menu_profile(message: Message, state: FSMContext):
     await state.clear()
     user = AuthService.get_user(message.from_user.id)
-    if user and user.companies == ["consulting"]:
-        await message.answer("❌ Функция недоступна для вашей компании")
-        return
     if not user:
         await message.answer("❌ Пользователь не найден")
         return
