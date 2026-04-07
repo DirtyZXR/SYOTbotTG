@@ -4,69 +4,60 @@ from typing import List
 from config import settings
 
 
-def get_folder_keyboard(folder_path: str, relative_path: str = "") -> InlineKeyboardMarkup:
+def get_folder_keyboard(
+    folders_list: list, files_list: list, is_root: bool = False
+) -> InlineKeyboardMarkup:
     """
     Клавиатура для навигации по папкам и файлам
 
     Args:
-        folder_path: Полный путь к папке
-        relative_path: Относительный путь от data/documents (для навигации)
+        folders_list: Список кортежей (hash, name, path) для папок
+        files_list: Список кортежей (hash, name, path) для файлов
+        is_root: Находимся ли мы в корневой директории
     """
-    folder = Path(folder_path)
-
-    if not folder.exists() or not folder.is_dir():
-        return InlineKeyboardMarkup(inline_keyboard=[])
-
     buttons = []
-    items = sorted(folder.iterdir(), key=lambda x: (not x.is_dir(), x.name))
 
-    # Сначала папки, потом файлы
-    folders = [item for item in items if item.is_dir()]
-    files = [item for item in items if item.is_file()]
+    # Добавляем папки
+    for folder_hash, folder_name, _ in folders_list:
+        buttons.append(
+            [
+                InlineKeyboardButton(
+                    text=f"📁 {folder_name}", callback_data=f"f_{folder_hash}"
+                )
+            ]
+        )
 
-    # Добавляем папки (используем хеш имени для короткого callback_data)
-    import hashlib
-    for folder_item in folders:
-        # Создаем короткий хеш для callback_data (максимум 64 байта)
-        name_hash = hashlib.md5(folder_item.name.encode('utf-8')).hexdigest()[:8]
-        buttons.append([
-            InlineKeyboardButton(
-                text=f"📁 {folder_item.name}",
-                callback_data=f"f_{name_hash}"
-            )
-        ])
-
-    # Добавляем файлы (используем хеш имени)
-    for file_item in files:
-        name_hash = hashlib.md5(file_item.name.encode('utf-8')).hexdigest()[:8]
-        buttons.append([
-            InlineKeyboardButton(
-                text=f"📄 {file_item.name}",
-                callback_data=f"fl_{name_hash}"
-            )
-        ])
+    # Добавляем файлы
+    for file_hash, file_name, _ in files_list:
+        buttons.append(
+            [
+                InlineKeyboardButton(
+                    text=f"📄 {file_name}", callback_data=f"fl_{file_hash}"
+                )
+            ]
+        )
 
     # Кнопка "Назад" (если не в корне)
-    if relative_path:
-        buttons.append([
-            InlineKeyboardButton(
-                text="🔙 Назад",
-                callback_data="back_folder"
-            )
-        ])
+    if not is_root:
+        buttons.append(
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="back_folder")]
+        )
     else:
         # В корне документов - кнопка "В главное меню"
-        buttons.append([
-            InlineKeyboardButton(
-                text="🏠 В главное меню",
-                callback_data="back_to_menu"
-            )
-        ])
+        buttons.append(
+            [
+                InlineKeyboardButton(
+                    text="🏠 В главное меню", callback_data="back_to_menu"
+                )
+            ]
+        )
 
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 def get_back_to_menu_button() -> InlineKeyboardMarkup:
     """Кнопка возврата в главное меню"""
-    buttons = [[InlineKeyboardButton(text="🏠 В главное меню", callback_data="back_to_menu")]]
+    buttons = [
+        [InlineKeyboardButton(text="🏠 В главное меню", callback_data="back_to_menu")]
+    ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)

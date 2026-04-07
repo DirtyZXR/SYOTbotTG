@@ -38,7 +38,7 @@ class AuthService:
         email: str,
         full_name: Optional[str] = None,
         username: Optional[str] = None,
-        company: Optional[str] = None,
+        companies: Optional[list[str]] = None,
     ) -> tuple[bool, str]:
         """
         Register a user (creates with is_pending=True)
@@ -72,7 +72,7 @@ class AuthService:
             full_name=full_name,
             username=username,
             is_pending=True,
-            company=company,
+            companies=companies,
         )
         db.close()
         return True, "Application submitted"

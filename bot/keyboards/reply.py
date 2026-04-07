@@ -6,14 +6,14 @@ from models.user import User
 
 def get_main_menu_keyboard(user_id: Optional[int] = None) -> ReplyKeyboardMarkup:
     """Главное меню (Reply)"""
-    is_consulting = False
+    is_intellectika = False
     is_admin = False
 
     if user_id:
         user = AuthService.get_user(user_id)
         if user:
-            if user.company == "consulting":
-                is_consulting = True
+            if "intellectika" in (user.companies or []):
+                is_intellectika = True
             if user.is_admin:
                 is_admin = True
 
@@ -23,11 +23,12 @@ def get_main_menu_keyboard(user_id: Optional[int] = None) -> ReplyKeyboardMarkup
     # 1 ряд - Документы (доступны всем)
     keyboard.append([KeyboardButton(text="📚 Документы")])
 
-    # 2 ряд - Тесты и Профиль (недоступны Консалтингу)
-    if not is_consulting:
-        keyboard.append(
-            [KeyboardButton(text="📝 Тесты"), KeyboardButton(text="✏️ Мои данные")]
-        )
+    # 2 ряд - Профиль доступен всем. Тесты доступны только Интеллектике
+    row_2 = []
+    if is_intellectika:
+        row_2.append(KeyboardButton(text="📝 Тесты"))
+    row_2.append(KeyboardButton(text="✏️ Мои данные"))
+    keyboard.append(row_2)
 
     # 3 ряд - Админ-панель (только для админов)
     if is_admin:

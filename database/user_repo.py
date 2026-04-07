@@ -18,7 +18,7 @@ class UserRepository:
         full_name: Optional[str] = None,
         username: Optional[str] = None,
         is_pending: bool = True,
-        company: Optional[str] = None,
+        companies: Optional[list[str]] = None,
     ) -> User:
         """Создание нового пользователя"""
         user = User(
@@ -28,7 +28,7 @@ class UserRepository:
             full_name_lower=full_name.lower() if full_name else None,
             username=username,
             is_pending=is_pending,
-            company=company,
+            companies=companies if companies is not None else [],
         )
         self.db.add(user)
         self.db.commit()
@@ -181,29 +181,31 @@ class UserRepository:
     def get_expired_users(self) -> List[User]:
         """Пользователи с истёкшим допуском (is_verified=True, срок вышел, не админ)"""
         now = datetime.now()
-        return (
+        # При множественных компаниях мы не можем просто использовать User.company != "consulting".
+        # Но SQLite JSON не имеет простого оператора != для массивов.
+        # Оставим фильтрацию на уровне приложения или сделаем ее проще.
+        users = (
             self.db.query(User)
             .filter(
                 User.is_verified == True,
                 User.is_admin == False,
-                User.company != "consulting",
                 User.access_granted_at != None,
                 User.access_granted_at + timedelta(days=358) <= now,
             )
             .all()
         )
+        return [u for u in users if u.companies != ["consulting"]]
 
     def get_expiring_users(self, days: int, notified_field: str) -> List[User]:
         """Пользователи, чей допуск истекает через N дней (ещё не уведомлены)"""
         now = datetime.now()
         threshold = now + timedelta(days=days)
 
-        return (
+        users = (
             self.db.query(User)
             .filter(
                 User.is_verified == True,
                 User.is_admin == False,
-                User.company != "consulting",
                 User.access_granted_at != None,
                 User.access_granted_at + timedelta(days=358) <= threshold,
                 User.access_granted_at + timedelta(days=358) > now,
@@ -211,6 +213,7 @@ class UserRepository:
             )
             .all()
         )
+        return [u for u in users if u.companies != ["consulting"]]
 
     def get_users_for_3g_notification(
         self, days: int, notified_field: str
@@ -220,10 +223,9 @@ class UserRepository:
 
         now = datetime.now()
         threshold = now + timedelta(days=days)
-        return (
+        users = (
             self.db.query(User)
             .filter(
-                User.company != "consulting",
                 User.is_admin == False,
                 User.group2_passed_at != None,
                 User.access_granted_at != None,
@@ -234,6 +236,7 @@ class UserRepository:
             )
             .all()
         )
+        return [u for u in users if u.companies != ["consulting"]]
 
     def get_users_with_expired_group3(self) -> List[User]:
         """Пользователи, у которых истекает 3 группа (прошло 358 дней)"""
@@ -241,16 +244,16 @@ class UserRepository:
         # Ищем тех, кто сдал тест ровно 358 дней назад
         check_date = now.date() - timedelta(days=358)
 
-        return (
+        users = (
             self.db.query(User)
             .filter(
                 User.is_admin == False,
-                User.company != "consulting",
                 User.group3_passed_at != None,
                 func.date(User.group3_passed_at) == check_date,
             )
             .all()
         )
+        return [u for u in users if u.companies != ["consulting"]]
 
     def mark_notified(self, user: User, field: str) -> User:
         """Отметить, что уведомление отправлено"""

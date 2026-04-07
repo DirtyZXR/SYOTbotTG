@@ -105,7 +105,7 @@ def is_group_available(user, group: int) -> bool:
     """Проверить доступность группы для пользователя"""
     from datetime import datetime, timedelta
 
-    if not user or user.company != "intellectika":
+    if not user or not user.companies or "intellectika" not in user.companies:
         return False
 
     if group == 2:

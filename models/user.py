@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, JSON
 from sqlalchemy.sql import func
 from database import Base
 
@@ -21,7 +21,7 @@ class User(Base):
     is_admin = Column(Boolean, default=False)  # Администратор системы
     notified_7d = Column(Boolean, default=False)  # Уведомление за 7 дней отправлено
     notified_1d = Column(Boolean, default=False)  # Уведомление за 1 день отправлено
-    company = Column(String)  # Ключ компании из COMPANY_ROOTS (company1, company2)
+    companies = Column(JSON, default=list)  # Список компаний пользователя
     group2_passed_at = Column(DateTime)  # Когда сдана группа 2
     group3_passed_at = Column(DateTime)  # Когда сдана группа 3
     notified_3g_7d = Column(
@@ -34,4 +34,4 @@ class User(Base):
     access_granted_at = Column(DateTime)  # Дата выдачи документа
 
     def __repr__(self):
-        return f"<User(telegram_id={self.telegram_id}, email={self.email})>"
+        return f"<User(telegram_id={self.telegram_id}, email={self.email}, companies={self.companies})>"
