@@ -951,7 +951,9 @@ async def callback_folder(callback: CallbackQuery, state: FSMContext):
 
     await callback.message.edit_text(
         f"📁 {folder_name}\n\nВыберите папку или файл:",
-        reply_markup=get_folder_keyboard(folder_path, new_relative),
+        reply_markup=get_folder_keyboard(
+            new_folders, new_files, is_root=(new_relative == "")
+        ),
     )
     await callback.answer()
 
