@@ -795,6 +795,33 @@ async def process_menu_profile(message: Message, state: FSMContext):
         return
 
     msg = f"👤 <b>Ваши данные</b>\n\n📋 ФИО: {user.full_name or 'Не указано'}\n📧 Email: {user.email}\n"
+
+    if user.company == "intellectika":
+        from datetime import datetime, timedelta
+        from core.test_service import get_group3_unlock_date
+
+        msg += "\n<b>📊 Статус тестирования:</b>\n"
+        if user.group3_passed_at:
+            expiry_date = user.group3_passed_at + timedelta(days=365)
+            days_left = (expiry_date - datetime.now()).days
+            if days_left > 0:
+                msg += f"✅ III группа до 1000В (действует еще {days_left} дн.)\n"
+            else:
+                msg += "❌ III группа до 1000В (срок действия истек)\n"
+        elif user.group2_passed_at:
+            unlock = get_group3_unlock_date(user)
+            days_left = (
+                (unlock - datetime.now()).days
+                if unlock and unlock > datetime.now()
+                else 0
+            )
+            if days_left > 0:
+                msg += f"✅ II группа до 1000В\n⏳ III группа откроется через {days_left} дн.\n"
+            else:
+                msg += "✅ II группа до 1000В\n⏳ Доступна сдача III группы\n"
+        else:
+            msg += "❌ Нет сданных тестов\n"
+
     await message.answer(
         msg, parse_mode=ParseMode.HTML, reply_markup=get_profile_keyboard()
     )
