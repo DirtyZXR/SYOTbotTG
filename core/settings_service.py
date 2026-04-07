@@ -1,7 +1,6 @@
 from database import SessionLocal, UserRepository
 from config import settings
 from utils import logger
-from typing import Optional
 
 
 class SettingsService:
@@ -28,13 +27,16 @@ class SettingsService:
 
         # Проверяем первого админа из .env
         super_admin_id = settings.admin_id
-        existing_admin = user_repo.get_by_telegram_id(super_admin_id)
+        admin_email = f"admin_{super_admin_id}@intellectika.ru"
+        existing_admin = user_repo.get_by_telegram_id(
+            super_admin_id
+        ) or user_repo.get_by_email(admin_email)
 
         if not existing_admin:
             logger.info(f"Creating first admin from .env (ID: {super_admin_id})...")
             user_repo.create_user(
                 telegram_id=super_admin_id,
-                email=f"admin@intellectika.ru",
+                email=admin_email,
                 full_name="Super Admin",
                 username="superadmin",
                 is_pending=False,
