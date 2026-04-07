@@ -23,14 +23,18 @@ def get_main_menu_keyboard(user_id: Optional[int] = None) -> ReplyKeyboardMarkup
     # 1 ряд - Документы (доступны всем)
     keyboard.append([KeyboardButton(text="📚 Документы")])
 
-    # 2 ряд - Профиль доступен всем. Тесты доступны только Интеллектике
-    row_2 = []
+    # 2 ряд - Тесты и Рейтинг (только для Интеллектики)
     if is_intellectika:
-        row_2.append(KeyboardButton(text="📝 Тесты"))
-    row_2.append(KeyboardButton(text="✏️ Мои данные"))
-    keyboard.append(row_2)
+        keyboard.append(
+            [KeyboardButton(text="📝 Тесты"), KeyboardButton(text="🏆 Рейтинг")]
+        )
 
-    # 3 ряд - Админ-панель (только для админов)
+    # 3 ряд - Статистика и Профиль (доступны всем)
+    keyboard.append(
+        [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="✏️ Мои данные")]
+    )
+
+    # 4 ряд - Админ-панель (только для админов)
     if is_admin:
         keyboard.append([KeyboardButton(text="🔧 Админ-панель")])
 

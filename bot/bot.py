@@ -712,6 +712,66 @@ async def callback_test_cancel(callback: CallbackQuery, state: FSMContext):
     await callback.answer("Тест отменен.")
 
 
+@dp.callback_query(lambda c: c.data.startswith("leaderboard_group_"))
+async def callback_leaderboard_group(callback: CallbackQuery, state: FSMContext):
+    """Пагинация и переключение групп в таблице лидеров"""
+    parts = callback.data.split("_")
+    group = int(parts[2])
+    page = int(parts[3])
+    limit = 10
+
+    from database import SessionLocal, TestResultRepository
+    from bot.keyboards.leaderboard import get_leaderboard_keyboard
+
+    db = SessionLocal()
+    try:
+        repo = TestResultRepository(db)
+        leaders, total = repo.get_leaderboard(
+            group=group, limit=limit, offset=page * limit
+        )
+    finally:
+        db.close()
+
+    group_name = "II группа до 1000В" if group == 2 else "III группа до 1000В"
+    msg = f"🏆 <b>Таблица лидеров ({group_name})</b>\n\n"
+
+    if not leaders:
+        msg += "Пока нет результатов."
+    else:
+        for i, leader in enumerate(leaders):
+            place = i + 1 + (page * limit)
+            medal = (
+                "🥇"
+                if place == 1
+                else "🥈"
+                if place == 2
+                else "🥉"
+                if place == 3
+                else "🔸"
+            )
+            score = leader["result"].score
+            total_score = leader["result"].total
+            name = leader["user"].full_name or "Без имени"
+            date_str = leader["result"].created_at.strftime("%d.%m.%Y")
+
+            msg += (
+                f"{medal} <b>{name}</b> — {score}/{total_score} <i>({date_str})</i>\n"
+            )
+
+    import math
+
+    total_pages = max(1, math.ceil(total / limit))
+
+    await callback.message.edit_text(
+        msg,
+        parse_mode=ParseMode.HTML,
+        reply_markup=get_leaderboard_keyboard(
+            current_group=group, total_pages=total_pages, current_page=page
+        ),
+    )
+    await callback.answer()
+
+
 # ==================== Main Menu Handlers ====================
 
 
@@ -816,6 +876,117 @@ async def process_menu_tests(message: Message, state: FSMContext):
 
     await message.answer(
         msg, parse_mode=ParseMode.HTML, reply_markup=get_test_groups_keyboard(user)
+    )
+
+
+@dp.message(F.text == "📊 Статистика")
+async def process_menu_stats(message: Message, state: FSMContext):
+    await state.clear()
+    user = AuthService.get_user(message.from_user.id)
+    if not user:
+        await message.answer("❌ Пользователь не найден")
+        return
+
+    from database import SessionLocal, DocumentDownloadRepository
+    from datetime import datetime
+
+    now = datetime.now()
+    db = SessionLocal()
+    try:
+        repo = DocumentDownloadRepository(db)
+        user_downloads = repo.get_user_monthly_stats(user.id, now.year, now.month)
+        global_downloads = repo.get_global_monthly_stats(now.year, now.month)
+    finally:
+        db.close()
+
+    months = [
+        "Январь",
+        "Февраль",
+        "Март",
+        "Апрель",
+        "Май",
+        "Июнь",
+        "Июль",
+        "Август",
+        "Сентябрь",
+        "Октябрь",
+        "Ноябрь",
+        "Декабрь",
+    ]
+    current_month_name = months[now.month - 1]
+
+    msg = (
+        f"📊 <b>Статистика скачиваний</b>\n\n"
+        f"📅 Текущий месяц: <b>{current_month_name}</b>\n\n"
+        f"📥 Ваши скачивания: <b>{user_downloads}</b>\n"
+        f"🏢 Всего скачиваний сотрудниками: <b>{global_downloads}</b>"
+    )
+
+    await message.answer(msg, parse_mode=ParseMode.HTML)
+
+
+@dp.message(F.text == "🏆 Рейтинг")
+async def process_menu_leaderboard(message: Message, state: FSMContext):
+    await state.clear()
+    user = AuthService.get_user(message.from_user.id)
+    if not user or "intellectika" not in (user.companies or []):
+        await message.answer(
+            '❌ Функция рейтинга доступна только для сотрудников ООО "Интеллектика"'
+        )
+        return
+
+    from database import SessionLocal, TestResultRepository
+    from bot.keyboards.leaderboard import get_leaderboard_keyboard
+
+    group = 2
+    page = 0
+    limit = 10
+
+    db = SessionLocal()
+    try:
+        repo = TestResultRepository(db)
+        leaders, total = repo.get_leaderboard(
+            group=group, limit=limit, offset=page * limit
+        )
+    finally:
+        db.close()
+
+    group_name = "II группа до 1000В"
+    msg = f"🏆 <b>Таблица лидеров ({group_name})</b>\n\n"
+
+    if not leaders:
+        msg += "Пока нет результатов."
+    else:
+        for i, leader in enumerate(leaders):
+            place = i + 1 + (page * limit)
+            medal = (
+                "🥇"
+                if place == 1
+                else "🥈"
+                if place == 2
+                else "🥉"
+                if place == 3
+                else "🔸"
+            )
+            score = leader["result"].score
+            total_score = leader["result"].total
+            name = leader["user"].full_name or "Без имени"
+            date_str = leader["result"].created_at.strftime("%d.%m.%Y")
+
+            msg += (
+                f"{medal} <b>{name}</b> — {score}/{total_score} <i>({date_str})</i>\n"
+            )
+
+    import math
+
+    total_pages = max(1, math.ceil(total / limit))
+
+    await message.answer(
+        msg,
+        parse_mode=ParseMode.HTML,
+        reply_markup=get_leaderboard_keyboard(
+            current_group=group, total_pages=total_pages, current_page=page
+        ),
     )
 
 
@@ -1012,6 +1183,19 @@ async def callback_file(callback: CallbackQuery, state: FSMContext):
             caption=f"📄 {display_name}",
         )
         await callback.answer("✅ Файл отправлен")
+
+        # Логируем скачивание документа
+        from database import SessionLocal, DocumentDownloadRepository
+
+        user = AuthService.get_user(callback.from_user.id)
+        if user:
+            db = SessionLocal()
+            try:
+                repo = DocumentDownloadRepository(db)
+                repo.log_download(user_id=user.id, file_name=file_name)
+            finally:
+                db.close()
+
     except Exception as e:
         await callback.answer(f"❌ Ошибка отправки: {str(e)}", show_alert=True)
 
