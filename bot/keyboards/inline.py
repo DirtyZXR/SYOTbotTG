@@ -84,34 +84,6 @@ def get_documents_keyboard(documents: List) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def get_test_groups_keyboard(user) -> InlineKeyboardMarkup:
-    """Клавиатура выбора группы теста (только доступные)"""
-    from core.test_service import is_group_available
-
-    buttons = []
-    if is_group_available(user, 2):
-        buttons.append(
-            [
-                InlineKeyboardButton(
-                    text="📋 II группа до 1000В", callback_data="test_start_2"
-                )
-            ]
-        )
-    if is_group_available(user, 3):
-        buttons.append(
-            [
-                InlineKeyboardButton(
-                    text="📋 III группа до 1000В", callback_data="test_start_3"
-                )
-            ]
-        )
-
-    buttons.append(
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_menu")]
-    )
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
-
-
 def get_test_answers_keyboard(
     question_num: int, options: List[str]
 ) -> InlineKeyboardMarkup:
@@ -129,40 +101,6 @@ def get_test_answers_keyboard(
     buttons.append(
         [InlineKeyboardButton(text="❌ Прервать тест", callback_data="test_cancel")]
     )
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
-
-
-def get_main_menu_keyboard(user_id: Optional[int] = None) -> InlineKeyboardMarkup:
-    """Главное меню"""
-    buttons = [
-        [InlineKeyboardButton(text="📚 Документы", callback_data="menu_documents")],
-    ]
-
-    # Для Консалтинга — только документы, остальные функции недоступны
-    is_consulting = False
-    if user_id:
-        user = AuthService.get_user(user_id)
-        if user and user.company == "consulting":
-            is_consulting = True
-
-    if not is_consulting:
-        buttons.append(
-            [InlineKeyboardButton(text="📝 Тесты", callback_data="menu_tests")]
-        )
-        buttons.append(
-            [InlineKeyboardButton(text="✏️ Мои данные", callback_data="menu_profile")]
-        )
-
-    # Админ-панель — для всех администраторов
-    if user_id and AuthService.is_admin(user_id):
-        buttons.append(
-            [
-                InlineKeyboardButton(
-                    text="🔧 Админ-панель", callback_data="menu_admin_panel"
-                )
-            ]
-        )
-
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
@@ -342,25 +280,6 @@ def get_access_date_keyboard(user_id: int) -> InlineKeyboardMarkup:
                 text="❌ Отмена", callback_data=f"admin_user_{user_id}"
             ),
         ],
-    ]
-
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
-
-
-def get_profile_keyboard() -> InlineKeyboardMarkup:
-    """Клавиатура профиля пользователя"""
-    buttons = [
-        [
-            InlineKeyboardButton(
-                text="✏️ Изменить ФИО", callback_data="profile_edit_name"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                text="📧 Изменить email", callback_data="profile_edit_email"
-            )
-        ],
-        [InlineKeyboardButton(text="🔙 В главное меню", callback_data="back_to_menu")],
     ]
 
     return InlineKeyboardMarkup(inline_keyboard=buttons)

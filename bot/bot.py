@@ -1,5 +1,5 @@
 import asyncio
-from aiogram import Bot, Dispatcher
+from aiogram import Bot, Dispatcher, F
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
 from aiogram.filters import Command, StateFilter
@@ -442,20 +442,24 @@ async def go_back_to_main_menu(callback: CallbackQuery, state: FSMContext):
         await state.clear()
 
     welcome_message = await _get_welcome_message(callback.from_user.id)
-    await callback.message.edit_text(
+    await callback.message.delete()
+    await callback.message.answer(
         welcome_message,
         reply_markup=get_main_menu_keyboard(callback.from_user.id),
     )
 
 
-async def show_question(callback: CallbackQuery, state: FSMContext):
+async def show_question(event: CallbackQuery | Message, state: FSMContext):
     """Helper function to show the current test question with numbered options."""
     data = await state.get_data()
     questions = data.get("test_questions", [])
     current_index = data.get("test_current", 0)
 
     if current_index >= len(questions):
-        await callback.message.edit_text("Тест завершен!")
+        if isinstance(event, CallbackQuery):
+            await event.message.edit_text("Тест завершен!")
+        else:
+            await event.answer("Тест завершен!")
         await state.clear()
         return
 
@@ -472,228 +476,42 @@ async def show_question(callback: CallbackQuery, state: FSMContext):
         f"<b>Варианты ответа:</b>\n{options_text}"
     )
 
-    await callback.message.edit_text(
-        text=question_text,
-        reply_markup=get_test_answers_keyboard(
-            question_num=current_index, options=question["options"]
-        ),
-        parse_mode=ParseMode.HTML,
-    )
+    if isinstance(event, Message):
+        from aiogram.types import ReplyKeyboardRemove
 
-
-# ==================== Callback Handlers ====================
-
-
-@dp.callback_query(lambda c: c.data == "back_to_menu")
-async def callback_back_to_menu(callback: CallbackQuery, state: FSMContext):
-    """Возврат в главное меню"""
-    await go_back_to_main_menu(callback, state)
-
-
-@dp.callback_query(lambda c: c.data.startswith("menu_"))
-async def callback_menu(callback: CallbackQuery, state: FSMContext):
-    """Обработчик главного меню"""
-    try:
-        # Убираем префикс "menu_" чтобы получить action
-        action = callback.data[5:]  # Убираем первые 5 символов "menu_"
-        logger.info(
-            f"Menu action received: {action}, User: {callback.from_user.id}, Full data: {callback.data}"
+        await event.answer("🔄 Загрузка теста...", reply_markup=ReplyKeyboardRemove())
+        await event.answer(
+            text=question_text,
+            reply_markup=get_test_answers_keyboard(
+                question_num=current_index, options=question["options"]
+            ),
+            parse_mode=ParseMode.HTML,
+        )
+    else:
+        await event.message.edit_text(
+            text=question_text,
+            reply_markup=get_test_answers_keyboard(
+                question_num=current_index, options=question["options"]
+            ),
+            parse_mode=ParseMode.HTML,
         )
 
-        # Проверяем админские права для кнопки админ-панели
-        if action == "admin_panel":
-            logger.info(f"Admin panel button pressed by user {callback.from_user.id}")
-            is_admin = AuthService.is_admin(callback.from_user.id)
-            logger.info(f"User {callback.from_user.id} is admin: {is_admin}")
 
-            if not is_admin:
-                logger.warning(
-                    f"Unauthorized admin panel access attempt by user {callback.from_user.id}"
-                )
-                await callback.answer(
-                    "❌ У вас нет прав администратора", show_alert=True
-                )
-                return
-
-            logger.info(f"Showing admin panel to user {callback.from_user.id}")
-            admin_text = "🔧 <b>Админ-панель:</b>\n\nДоступные действия:"
-            await callback.message.edit_text(
-                admin_text,
-                parse_mode=ParseMode.HTML,
-                reply_markup=get_admin_menu_keyboard(),
-            )
-            logger.info(
-                f"Admin panel shown successfully to user {callback.from_user.id}"
-            )
-            await callback.answer()
-        elif action == "documents":
-            # Используем динамический файловый браузер
-            user = AuthService.get_user(callback.from_user.id)
-            if not user:
-                await callback.answer("❌ Пользователь не найден", show_alert=True)
-                return
-
-            # Определяем корневую папку по компании
-            base_docs_path = str(settings.documents_path)
-            if user.is_admin and not user.company:
-                # Админ без компании — видит всё
-                docs_path = base_docs_path
-            elif user.company and user.company in settings.COMPANY_ROOTS:
-                company_folder = settings.COMPANY_ROOTS[user.company]
-                docs_path = str(Path(base_docs_path) / company_folder)
-            else:
-                await callback.answer(
-                    "❌ Компания не назначена. Обратитесь к администратору.",
-                    show_alert=True,
-                )
-                return
-
-            # Проверяем что папка существует
-            docs_folder = Path(docs_path)
-            if not docs_folder.exists():
-                docs_folder.mkdir(parents=True, exist_ok=True)
-
-            await state.set_state(FileBrowserState.browsing)
-
-            # Сохраняем начальные данные в FSM
-            import hashlib
-
-            folders = []
-            files = []
-
-            for item in sorted(
-                docs_folder.iterdir(), key=lambda x: (not x.is_dir(), x.name)
-            ):
-                if item.is_dir():
-                    name_hash = hashlib.md5(item.name.encode("utf-8")).hexdigest()[:8]
-                    folders.append((name_hash, item.name, str(item)))
-                elif item.is_file():
-                    name_hash = hashlib.md5(item.name.encode("utf-8")).hexdigest()[:8]
-                    files.append((name_hash, item.name, str(item)))
-
-            await state.update_data(
-                current_path=docs_path,
-                relative_path="",  # Пустой путь = корень documents
-                folders=folders,
-                files=files,
-                root_path=docs_path,  # Корень ограничен папкой компании
-            )
-
-            await callback.message.edit_text(
-                "📚 Документы:\n\nВыберите папку:",
-                reply_markup=get_folder_keyboard(docs_path),
-            )
-            logger.info(f"Documents browser opened by user {callback.from_user.id}")
-            await callback.answer()
-        elif action == "tests":
-            logger.info(f"Tests button pressed by user {callback.from_user.id}")
-            user = AuthService.get_user(callback.from_user.id)
-            if not user or user.company != "intellectika":
-                await callback.answer(
-                    '❌ Функция тестирования доступна только для сотрудников ООО "Интеллектика"',
-                    show_alert=True,
-                )
-                return
-
-            from core.test_service import is_group_available, get_group3_unlock_date
-            from datetime import datetime
-
-            # Проверяем, сдал ли пользователь уже 3 группу
-            if user.group3_passed_at:
-                msg = (
-                    "✅ <b>III группа до 1000В сдана.</b>\n\n"
-                    "Больше тестов нет. Обновлением удостоверения будет заниматься администратор."
-                )
-                # Используем get_back_to_menu_button для добавления кнопки "Назад"
-                await callback.message.edit_text(
-                    msg,
-                    parse_mode=ParseMode.HTML,
-                    reply_markup=get_back_to_menu_button(),
-                )
-                await callback.answer()
-                return
-
-            # Проверяем статус
-            msg = ""
-            if user.group2_passed_at and not is_group_available(user, 3):
-                unlock = get_group3_unlock_date(user)
-                days_left = (
-                    (unlock - datetime.now()).days
-                    if unlock and unlock > datetime.now()
-                    else 0
-                )
-                if days_left > 0:
-                    msg = f"✅ II группа до 1000В сдана.\n\n⏳ III группа до 1000В откроется через {days_left} дн."
-                else:
-                    msg = "✅ II группа до 1000В сдана.\n\n⏳ III группа до 1000В скоро будет доступна. Попробуйте зайти позже."
-
-            elif not is_group_available(user, 2) and not is_group_available(user, 3):
-                msg = "✅ Вы уже сдали все доступные группы тестов."
-
-            else:
-                msg = "📝 <b>Тестирование</b>\n\nВыберите группу для сдачи:"
-
-            await callback.message.edit_text(
-                msg,
-                parse_mode=ParseMode.HTML,
-                reply_markup=get_test_groups_keyboard(user),
-            )
-            await callback.answer()
-        elif action == "profile":
-            user = AuthService.get_user(callback.from_user.id)
-            # Консалтинг — профиль недоступен
-            if user and user.company == "consulting":
-                await callback.answer(
-                    "❌ Функция недоступна для вашей компании", show_alert=True
-                )
-                return
-            if not user:
-                await callback.answer("❌ Пользователь не найден", show_alert=True)
-                return
-
-            msg = (
-                f"👤 <b>Ваши данные</b>\n\n"
-                f"📋 ФИО: {user.full_name or 'Не указано'}\n"
-                f"📧 Email: {user.email}\n"
-            )
-            await callback.message.edit_text(
-                msg,
-                parse_mode=ParseMode.HTML,
-                reply_markup=get_profile_keyboard(),
-            )
-            await callback.answer()
-        else:
-            logger.warning(f"Unknown menu action: {action}")
-            await callback.answer("❌ Неизвестное действие")
-
-    except Exception as e:
-        logger.error(f"Error in callback_menu: {e}", exc_info=True)
-        try:
-            await callback.answer("❌ Произошла ошибка", show_alert=True)
-        except Exception as callback_error:
-            logger.error(f"Error answering callback: {callback_error}")
-
-
-# ==================== Test Handlers ====================
-
-
-@dp.callback_query(lambda c: c.data.startswith("test_start_"))
-async def callback_test_start(callback: CallbackQuery, state: FSMContext):
+@dp.message(F.text.in_({"📋 II группа до 1000В", "📋 III группа до 1000В"}))
+async def process_test_start(message: Message, state: FSMContext):
     """Начало теста для выбранной группы."""
-    group = int(callback.data.split("_")[-1])
+    group = 2 if "II" in message.text else 3
 
     from core.test_service import select_random_questions, is_group_available
 
-    user = AuthService.get_user(callback.from_user.id)
+    user = AuthService.get_user(message.from_user.id)
     if not is_group_available(user, group):
-        await callback.answer("❌ Эта группа тестов вам недоступна.", show_alert=True)
+        await message.answer("❌ Эта группа тестов вам недоступна.")
         return
 
     questions = select_random_questions(group)
     if not questions:
-        await callback.answer(
-            "❌ Не удалось загрузить вопросы. Попробуйте позже.", show_alert=True
-        )
+        await message.answer("❌ Не удалось загрузить вопросы. Попробуйте позже.")
         return
 
     await state.set_state(TestState.taking_test)
@@ -706,9 +524,7 @@ async def callback_test_start(callback: CallbackQuery, state: FSMContext):
         }
     )
 
-    await show_question(callback, state)
-    group_name = "II группа до 1000В" if group == 2 else "III группа до 1000В"
-    await callback.answer(f"Начинаем тест для {group_name}!")
+    await show_question(message, state)
 
 
 @dp.callback_query(
@@ -809,7 +625,8 @@ async def callback_test_answer(callback: CallbackQuery, state: FSMContext):
         )
 
         # 1. Отредактировать исходное сообщение, показав только шапку
-        await callback.message.edit_text(
+        await callback.message.delete()
+        await callback.message.answer(
             format_results_header(results, user.full_name, data["test_group"]),
             parse_mode=ParseMode.HTML,
             reply_markup=get_test_groups_keyboard(user),
@@ -853,12 +670,146 @@ async def callback_test_cancel(callback: CallbackQuery, state: FSMContext):
     """Отмена теста."""
     await state.clear()
     user = AuthService.get_user(callback.from_user.id)
-    await callback.message.edit_text(
+    await callback.message.delete()
+    await callback.message.answer(
         "📝 <b>Тестирование</b>\n\nТест был отменен. Вы можете начать заново.",
         parse_mode=ParseMode.HTML,
         reply_markup=get_test_groups_keyboard(user),
     )
     await callback.answer("Тест отменен.")
+
+
+# ==================== Main Menu Handlers ====================
+
+
+@dp.message(F.text == "📚 Документы")
+async def process_menu_documents(message: Message, state: FSMContext):
+    await state.clear()
+    user = AuthService.get_user(message.from_user.id)
+    if not user:
+        await message.answer("❌ Пользователь не найден")
+        return
+
+    base_docs_path = str(settings.documents_path)
+    if user.is_admin and not user.company:
+        docs_path = base_docs_path
+    elif user.company and user.company in settings.COMPANY_ROOTS:
+        company_folder = settings.COMPANY_ROOTS[user.company]
+        docs_path = str(Path(base_docs_path) / company_folder)
+    else:
+        await message.answer("❌ Компания не назначена. Обратитесь к администратору.")
+        return
+
+    docs_folder = Path(docs_path)
+    if not docs_folder.exists():
+        docs_folder.mkdir(parents=True, exist_ok=True)
+
+    await state.set_state(FileBrowserState.browsing)
+
+    import hashlib
+
+    folders = []
+    files = []
+
+    for item in sorted(docs_folder.iterdir(), key=lambda x: (not x.is_dir(), x.name)):
+        if item.is_dir():
+            name_hash = hashlib.md5(item.name.encode("utf-8")).hexdigest()[:8]
+            folders.append((name_hash, item.name, str(item)))
+        elif item.is_file():
+            name_hash = hashlib.md5(item.name.encode("utf-8")).hexdigest()[:8]
+            files.append((name_hash, item.name, str(item)))
+
+    await state.update_data(
+        current_path=docs_path,
+        relative_path="",
+        folders=folders,
+        files=files,
+        root_path=docs_path,
+    )
+
+    await message.answer(
+        "📚 Документы:\n\nВыберите папку:", reply_markup=get_folder_keyboard(docs_path)
+    )
+
+
+@dp.message(F.text == "📝 Тесты")
+async def process_menu_tests(message: Message, state: FSMContext):
+    await state.clear()
+    user = AuthService.get_user(message.from_user.id)
+    if not user or user.company != "intellectika":
+        await message.answer(
+            '❌ Функция тестирования доступна только для сотрудников ООО "Интеллектика"'
+        )
+        return
+
+    from core.test_service import is_group_available, get_group3_unlock_date
+    from datetime import datetime
+
+    if user.group3_passed_at:
+        msg = "✅ <b>III группа до 1000В сдана.</b>\n\nБольше тестов нет. Обновлением удостоверения будет заниматься администратор."
+        await message.answer(
+            msg,
+            parse_mode=ParseMode.HTML,
+            reply_markup=get_main_menu_keyboard(message.from_user.id),
+        )
+        return
+
+    msg = ""
+    if user.group2_passed_at and not is_group_available(user, 3):
+        unlock = get_group3_unlock_date(user)
+        days_left = (
+            (unlock - datetime.now()).days if unlock and unlock > datetime.now() else 0
+        )
+        if days_left > 0:
+            msg = f"✅ II группа до 1000В сдана.\n\n⏳ III группа до 1000В откроется через {days_left} дн."
+        else:
+            msg = "✅ II группа до 1000В сдана.\n\n⏳ III группа до 1000В скоро будет доступна. Попробуйте зайти позже."
+    elif not is_group_available(user, 2) and not is_group_available(user, 3):
+        msg = "✅ Вы уже сдали все доступные группы тестов."
+    else:
+        msg = "📝 <b>Тестирование</b>\n\nВыберите группу для сдачи:"
+
+    await message.answer(
+        msg, parse_mode=ParseMode.HTML, reply_markup=get_test_groups_keyboard(user)
+    )
+
+
+@dp.message(F.text == "✏️ Мои данные")
+async def process_menu_profile(message: Message, state: FSMContext):
+    await state.clear()
+    user = AuthService.get_user(message.from_user.id)
+    if user and user.company == "consulting":
+        await message.answer("❌ Функция недоступна для вашей компании")
+        return
+    if not user:
+        await message.answer("❌ Пользователь не найден")
+        return
+
+    msg = f"👤 <b>Ваши данные</b>\n\n📋 ФИО: {user.full_name or 'Не указано'}\n📧 Email: {user.email}\n"
+    await message.answer(
+        msg, parse_mode=ParseMode.HTML, reply_markup=get_profile_keyboard()
+    )
+
+
+@dp.message(F.text == "🔧 Админ-панель")
+async def process_menu_admin_panel(message: Message, state: FSMContext):
+    await state.clear()
+    if not AuthService.is_admin(message.from_user.id):
+        await message.answer("❌ У вас нет прав администратора")
+        return
+    admin_text = "🔧 <b>Админ-панель:</b>\n\nДоступные действия:"
+    await message.answer(
+        admin_text, parse_mode=ParseMode.HTML, reply_markup=get_admin_menu_keyboard()
+    )
+
+
+@dp.message(F.text.in_({"🔙 Назад", "🔙 В главное меню", "❌ Отмена"}))
+async def process_go_back(message: Message, state: FSMContext):
+    await state.clear()
+    await message.answer(
+        "Вы вернулись в главное меню.",
+        reply_markup=get_main_menu_keyboard(message.from_user.id),
+    )
 
 
 # ==================== File Browser Handlers ====================
@@ -1055,23 +1006,22 @@ async def callback_back_folder(callback: CallbackQuery, state: FSMContext):
 # ==================== Profile Handlers ====================
 
 
-@dp.callback_query(lambda c: c.data == "profile_edit_name")
-async def callback_profile_edit_name(callback: CallbackQuery, state: FSMContext):
+@dp.message(F.text == "✏️ Изменить ФИО")
+async def process_profile_edit_name_start(message: Message, state: FSMContext):
     """Начало редактирования своего ФИО"""
-    user = AuthService.get_user(callback.from_user.id)
+    user = AuthService.get_user(message.from_user.id)
     if not user:
-        await callback.answer("❌ Пользователь не найден", show_alert=True)
+        await message.answer("❌ Пользователь не найден")
         return
 
     await state.set_state(ProfileState.editing_full_name)
-    await callback.message.edit_text(
+    await message.answer(
         f"✏️ <b>Изменение ФИО</b>\n\n"
         f"Текущее ФИО: {user.full_name or 'Не указано'}\n\n"
         f"Введите новое ФИО (3 слова: Фамилия Имя Отчество):",
         parse_mode=ParseMode.HTML,
-        reply_markup=get_cancel_operation_keyboard(),
+        reply_markup=get_cancel_keyboard(),
     )
-    await callback.answer()
 
 
 @dp.message(StateFilter(ProfileState.editing_full_name))
@@ -1113,23 +1063,22 @@ async def process_profile_edit_name(message: Message, state: FSMContext):
     )
 
 
-@dp.callback_query(lambda c: c.data == "profile_edit_email")
-async def callback_profile_edit_email(callback: CallbackQuery, state: FSMContext):
+@dp.message(F.text == "📧 Изменить email")
+async def process_profile_edit_email_start(message: Message, state: FSMContext):
     """Начало редактирования своего email"""
-    user = AuthService.get_user(callback.from_user.id)
+    user = AuthService.get_user(message.from_user.id)
     if not user:
-        await callback.answer("❌ Пользователь не найден", show_alert=True)
+        await message.answer("❌ Пользователь не найден")
         return
 
     await state.set_state(ProfileState.editing_email)
-    await callback.message.edit_text(
+    await message.answer(
         f"📧 <b>Изменение email</b>\n\n"
         f"Текущий email: {user.email}\n\n"
         f"Введите новый email:",
         parse_mode=ParseMode.HTML,
-        reply_markup=get_cancel_operation_keyboard(),
+        reply_markup=get_cancel_keyboard(),
     )
-    await callback.answer()
 
 
 @dp.message(StateFilter(ProfileState.editing_email))
@@ -1675,6 +1624,26 @@ async def callback_admin_manage_admins(callback: CallbackQuery, state: FSMContex
         reply_markup=get_manage_admins_keyboard(users),
     )
     await callback.answer()
+
+
+@dp.callback_query(lambda c: c.data.startswith("menu_"))
+async def callback_menu_stub(callback: CallbackQuery, state: FSMContext):
+    """Заглушка для старых inline-кнопок меню"""
+    await callback.answer(
+        "Интерфейс обновлен. Используйте нижнее меню.", show_alert=True
+    )
+    await callback.message.delete()
+    user = AuthService.get_user(callback.from_user.id)
+    if user:
+        await callback.message.answer(
+            "Используйте кнопки ниже:",
+            reply_markup=get_main_menu_keyboard(callback.from_user.id),
+        )
+
+
+@dp.callback_query(lambda c: c.data == "back_to_menu")
+async def callback_back_to_menu(callback: CallbackQuery, state: FSMContext):
+    await go_back_to_main_menu(callback, state)
 
 
 # ==================== Main Function ====================

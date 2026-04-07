@@ -1,8 +1,5 @@
 from .inline import (
-    get_test_groups_keyboard,
     get_test_answers_keyboard,
-    get_main_menu_keyboard,
-    get_cancel_keyboard,
     get_admin_menu_keyboard,
     get_admin_approval_keyboard,
     get_cancel_operation_keyboard,
@@ -11,11 +8,16 @@ from .inline import (
     get_admin_user_keyboard,
     get_admin_delete_confirm_keyboard,
     get_access_date_keyboard,
-    get_profile_keyboard,
     get_company_selection_keyboard,
     get_admin_company_keyboard,
     get_test_cancel_keyboard,
     get_admin_test_notification_keyboard,
+)
+from .reply import (
+    get_main_menu_keyboard,
+    get_profile_keyboard,
+    get_test_groups_keyboard,
+    get_cancel_keyboard,
 )
 from .file_browser import (
     get_folder_keyboard,
