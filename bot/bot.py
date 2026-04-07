@@ -752,7 +752,7 @@ async def callback_leaderboard_group(callback: CallbackQuery, state: FSMContext)
             score = leader["result"].score
             total_score = leader["result"].total
             name = leader["user"].full_name or "Без имени"
-            date_str = leader["result"].created_at.strftime("%d.%m.%Y")
+            date_str = leader["result"].passed_at.strftime("%d.%m.%Y")
 
             msg += (
                 f"{medal} <b>{name}</b> — {score}/{total_score} <i>({date_str})</i>\n"
@@ -971,7 +971,7 @@ async def process_menu_leaderboard(message: Message, state: FSMContext):
             score = leader["result"].score
             total_score = leader["result"].total
             name = leader["user"].full_name or "Без имени"
-            date_str = leader["result"].created_at.strftime("%d.%m.%Y")
+            date_str = leader["result"].passed_at.strftime("%d.%m.%Y")
 
             msg += (
                 f"{medal} <b>{name}</b> — {score}/{total_score} <i>({date_str})</i>\n"

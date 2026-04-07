@@ -81,14 +81,14 @@ class TestResultRepository:
                 # У кого балл больше, а при равном балле - кто сдал позже
                 if res.score > current_best.score or (
                     res.score == current_best.score
-                    and res.created_at > current_best.created_at
+                    and res.passed_at > current_best.passed_at
                 ):
                     best_per_user[user.id] = {"user": user, "result": res}
 
-        # Сортируем: сначала по score по убыванию, затем по created_at по убыванию
+        # Сортируем: сначала по score по убыванию, затем по passed_at по убыванию
         leaders = list(best_per_user.values())
         leaders.sort(
-            key=lambda x: (x["result"].score, x["result"].created_at), reverse=True
+            key=lambda x: (x["result"].score, x["result"].passed_at), reverse=True
         )
 
         total_leaders = len(leaders)
