@@ -916,8 +916,11 @@ async def callback_folder(callback: CallbackQuery, state: FSMContext):
         return
 
     # Проверяем, что не выходим за пределы root_path
-    root_path = data.get("root_path", "")
-    if not str(folder_path).startswith(str(root_path)):
+    root_path_str = data.get("root_path", "")
+    root_path_obj = Path(root_path_str).resolve()
+    folder_obj = folder.resolve()
+
+    if not folder_obj.is_relative_to(root_path_obj):
         await callback.answer("❌ Доступ запрещён", show_alert=True)
         return
 
@@ -986,8 +989,11 @@ async def callback_file(callback: CallbackQuery, state: FSMContext):
 
     # Проверяем, что не выходим за пределы root_path
     data = await state.get_data()
-    root_path = data.get("root_path", "")
-    if not str(file_path).startswith(str(root_path)):
+    root_path_str = data.get("root_path", "")
+    root_path_obj = Path(root_path_str).resolve()
+    file_resolved_obj = file_obj.resolve()
+
+    if not file_resolved_obj.is_relative_to(root_path_obj):
         await callback.answer("❌ Доступ запрещён", show_alert=True)
         return
 
