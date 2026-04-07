@@ -33,6 +33,7 @@ from bot.keyboards import (
     get_company_selection_keyboard,
     get_test_cancel_keyboard,
     get_admin_test_notification_keyboard,
+    get_admin_company_keyboard,
 )
 from bot.states import (
     RegistrationForm,
@@ -229,25 +230,46 @@ async def process_email(message: Message, state: FSMContext):
 
     if success:
         await state.update_data(email=email)
+        await state.update_data(selected_companies=[])
         await state.set_state(RegistrationForm.waiting_for_company)
         await message.answer(
-            "✅ Email принят\n\n🏢 Шаг 3/3: Выберите вашу компанию:",
-            reply_markup=get_company_selection_keyboard(),
+            "✅ Email принят\n\n🏢 Шаг 3/3: Выберите компании, в которых вы работаете (можно несколько):",
+            reply_markup=get_company_selection_keyboard([]),
         )
     else:
         await message.answer(f'❌ {msg}\n\nПопробуйте ещё раз или нажмите "Отмена"')
 
 
-@dp.callback_query(lambda c: c.data.startswith("reg_company_"))
-async def callback_reg_company(callback: CallbackQuery, state: FSMContext):
-    """Обработчик выбора компании при регистрации"""
-    company_key = callback.data.split("reg_company_")[1]
+@dp.callback_query(lambda c: c.data.startswith("reg_company_toggle_"))
+async def callback_reg_company_toggle(callback: CallbackQuery, state: FSMContext):
+    """Обработчик выбора/отмены компании при регистрации"""
+    company_key = callback.data.split("reg_company_toggle_")[1]
 
+    data = await state.get_data()
+    selected_companies = data.get("selected_companies", [])
+
+    if company_key in selected_companies:
+        selected_companies.remove(company_key)
+    else:
+        selected_companies.append(company_key)
+
+    await state.update_data(selected_companies=selected_companies)
+
+    await callback.message.edit_reply_markup(
+        reply_markup=get_company_selection_keyboard(selected_companies)
+    )
+    await callback.answer()
+
+
+@dp.callback_query(lambda c: c.data == "reg_company_confirm")
+async def callback_reg_company_confirm(callback: CallbackQuery, state: FSMContext):
+    """Обработчик подтверждения выбранных компаний при регистрации"""
     data = await state.get_data()
     full_name = data.get("full_name")
     email = data.get("email")
+    selected_companies = data.get("selected_companies", [])
 
-    if not full_name or not email:
+    if not full_name or not email or not selected_companies:
         await state.clear()
         await callback.message.edit_text(
             "❌ Ошибка регистрации. Начните заново: /start"
@@ -260,12 +282,14 @@ async def callback_reg_company(callback: CallbackQuery, state: FSMContext):
         email=email,
         full_name=full_name,
         username=callback.from_user.username,
-        company=company_key,
+        companies=selected_companies,
     )
 
     if reg_success:
         await state.clear()
-        company_display = settings.COMPANY_FULL_NAMES.get(company_key, company_key)
+        company_display = ", ".join(
+            settings.COMPANY_FULL_NAMES.get(c, c) for c in selected_companies
+        )
         await callback.message.edit_text(
             "✅ Заявка отправлена!\n\n"
             "⏳ Ожидайте подтверждения от администратора.\n"
@@ -700,15 +724,22 @@ async def process_menu_documents(message: Message, state: FSMContext):
         return
 
     base_docs_path = str(settings.documents_path)
-    if user.is_admin and not user.company:
-        docs_path = base_docs_path
-    elif user.company and user.company in settings.COMPANY_ROOTS:
-        company_folder = settings.COMPANY_ROOTS[user.company]
-        docs_path = str(Path(base_docs_path) / company_folder)
+    if user.is_admin and not user.companies:
+        allowed_folders = None
+    elif user.companies:
+        allowed_folders = [
+            settings.COMPANY_ROOTS[c]
+            for c in user.companies
+            if c in settings.COMPANY_ROOTS
+        ]
+        if not allowed_folders:
+            await message.answer("❌ У вас нет доступных папок документов.")
+            return
     else:
         await message.answer("❌ Компания не назначена. Обратитесь к администратору.")
         return
 
+    docs_path = base_docs_path
     docs_folder = Path(docs_path)
     if not docs_folder.exists():
         docs_folder.mkdir(parents=True, exist_ok=True)
@@ -721,6 +752,9 @@ async def process_menu_documents(message: Message, state: FSMContext):
     files = []
 
     for item in sorted(docs_folder.iterdir(), key=lambda x: (not x.is_dir(), x.name)):
+        if allowed_folders is not None and item.name not in allowed_folders:
+            continue
+
         if item.is_dir():
             name_hash = hashlib.md5(item.name.encode("utf-8")).hexdigest()[:8]
             folders.append((name_hash, item.name, str(item)))
@@ -734,10 +768,12 @@ async def process_menu_documents(message: Message, state: FSMContext):
         folders=folders,
         files=files,
         root_path=docs_path,
+        allowed_root_folders=allowed_folders,
     )
 
     await message.answer(
-        "📚 Документы:\n\nВыберите папку:", reply_markup=get_folder_keyboard(docs_path)
+        "📚 Документы:\n\nВыберите папку:",
+        reply_markup=get_folder_keyboard(folders, files, is_root=True),
     )
 
 
@@ -745,7 +781,7 @@ async def process_menu_documents(message: Message, state: FSMContext):
 async def process_menu_tests(message: Message, state: FSMContext):
     await state.clear()
     user = AuthService.get_user(message.from_user.id)
-    if not user or user.company != "intellectika":
+    if not user or "intellectika" not in (user.companies or []):
         await message.answer(
             '❌ Функция тестирования доступна только для сотрудников ООО "Интеллектика"'
         )
@@ -787,16 +823,13 @@ async def process_menu_tests(message: Message, state: FSMContext):
 async def process_menu_profile(message: Message, state: FSMContext):
     await state.clear()
     user = AuthService.get_user(message.from_user.id)
-    if user and user.company == "consulting":
-        await message.answer("❌ Функция недоступна для вашей компании")
-        return
     if not user:
         await message.answer("❌ Пользователь не найден")
         return
 
     msg = f"👤 <b>Ваши данные</b>\n\n📋 ФИО: {user.full_name or 'Не указано'}\n📧 Email: {user.email}\n"
 
-    if user.company == "intellectika":
+    if user.companies and "intellectika" in user.companies:
         from datetime import datetime, timedelta
         from core.test_service import get_group3_unlock_date
 
@@ -880,8 +913,11 @@ async def callback_folder(callback: CallbackQuery, state: FSMContext):
         return
 
     # Проверяем, что не выходим за пределы root_path
-    root_path = data.get("root_path", "")
-    if not str(folder_path).startswith(str(root_path)):
+    root_path_str = data.get("root_path", "")
+    root_path_obj = Path(root_path_str).resolve()
+    folder_obj = folder.resolve()
+
+    if not folder_obj.is_relative_to(root_path_obj):
         await callback.answer("❌ Доступ запрещён", show_alert=True)
         return
 
@@ -915,7 +951,9 @@ async def callback_folder(callback: CallbackQuery, state: FSMContext):
 
     await callback.message.edit_text(
         f"📁 {folder_name}\n\nВыберите папку или файл:",
-        reply_markup=get_folder_keyboard(folder_path, new_relative),
+        reply_markup=get_folder_keyboard(
+            new_folders, new_files, is_root=(new_relative == "")
+        ),
     )
     await callback.answer()
 
@@ -948,8 +986,11 @@ async def callback_file(callback: CallbackQuery, state: FSMContext):
 
     # Проверяем, что не выходим за пределы root_path
     data = await state.get_data()
-    root_path = data.get("root_path", "")
-    if not str(file_path).startswith(str(root_path)):
+    root_path_str = data.get("root_path", "")
+    root_path_obj = Path(root_path_str).resolve()
+    file_resolved_obj = file_obj.resolve()
+
+    if not file_resolved_obj.is_relative_to(root_path_obj):
         await callback.answer("❌ Доступ запрещён", show_alert=True)
         return
 
@@ -999,13 +1040,23 @@ async def callback_back_folder(callback: CallbackQuery, state: FSMContext):
         new_folders = []
         new_files = []
 
+        allowed_root_folders = data.get("allowed_root_folders")
+
         for item in sorted(
             parent_path.iterdir(), key=lambda x: (not x.is_dir(), x.name)
         ):
             if item.is_dir():
+                if (
+                    parent_relative == ""
+                    and allowed_root_folders is not None
+                    and item.name not in allowed_root_folders
+                ):
+                    continue
                 name_hash = hashlib.md5(item.name.encode("utf-8")).hexdigest()[:8]
                 new_folders.append((name_hash, item.name, str(item)))
             elif item.is_file():
+                if parent_relative == "" and allowed_root_folders is not None:
+                    continue
                 name_hash = hashlib.md5(item.name.encode("utf-8")).hexdigest()[:8]
                 new_files.append((name_hash, item.name, str(item)))
 
@@ -1024,7 +1075,9 @@ async def callback_back_folder(callback: CallbackQuery, state: FSMContext):
 
         await callback.message.edit_text(
             title,
-            reply_markup=get_folder_keyboard(str(parent_path), parent_relative),
+            reply_markup=get_folder_keyboard(
+                new_folders, new_files, is_root=(parent_relative == "")
+            ),
         )
     else:
         # В корне документов кнопка называется "В главное меню", но на всякий случай
@@ -1232,11 +1285,17 @@ async def callback_admin_user(callback: CallbackQuery):
 
     status = get_user_status_text(user)
     admin_badge = "\n👨‍💼 Администратор" if user.is_admin else ""
+    company_display = (
+        ", ".join(settings.COMPANY_FULL_NAMES.get(c, c) for c in (user.companies or []))
+        if user.companies
+        else "Не указана"
+    )
+
     msg = (
         f"👤 <b>Профиль пользователя</b>\n\n"
         f"📋 ФИО: {user.full_name or 'Не указано'}\n"
         f"📧 Email: {user.email}\n"
-        f"🏢 Компания: {user.company or 'Не указана'}\n"
+        f"🏢 Компания: {company_display}\n"
         f"📱 Telegram: @{user.username or 'Нет username'}\n"
         f"📅 Дата регистрации: {user.created_at.strftime('%d.%m.%Y')}\n"
         f"📌 {status}{admin_badge}"
@@ -1372,6 +1431,108 @@ async def process_admin_edit_email(message: Message, state: FSMContext):
         f"✅ Email обновлён: {email}",
         reply_markup=get_admin_menu_keyboard(),
     )
+
+
+@dp.callback_query(lambda c: c.data.startswith("admin_edit_company_"))
+async def callback_admin_edit_company(callback: CallbackQuery, state: FSMContext):
+    """Начало редактирования компаний пользователя (админ)"""
+    if not AuthService.is_admin(callback.from_user.id):
+        await callback.answer("❌ У вас нет прав администратора", show_alert=True)
+        return
+
+    user_id = int(callback.data.split("_")[-1])
+
+    from database import UserRepository, SessionLocal
+
+    db = SessionLocal()
+    user_repo = UserRepository(db)
+    user = user_repo.get_by_id(user_id)
+    db.close()
+
+    if not user:
+        await callback.answer("❌ Пользователь не найден", show_alert=True)
+        return
+
+    user_companies = user.companies or []
+    await state.update_data(edit_user_id=user_id, selected_companies=user_companies)
+    await state.set_state(AdminState.editing_user_company)
+
+    await callback.message.edit_text(
+        "🏢 <b>Изменение компаний</b>\n\nВыберите компании для пользователя:",
+        parse_mode=ParseMode.HTML,
+        reply_markup=get_admin_company_keyboard(user.id, user_companies),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(lambda c: c.data.startswith("admin_set_company_toggle_"))
+async def callback_admin_set_company_toggle(callback: CallbackQuery, state: FSMContext):
+    """Обработчик выбора/отмены компании при редактировании (админ)"""
+    if not AuthService.is_admin(callback.from_user.id):
+        await callback.answer("❌ У вас нет прав администратора", show_alert=True)
+        return
+
+    parts = callback.data.split("_")
+    company_key = parts[4]
+    user_id = int(parts[5])
+
+    data = await state.get_data()
+    selected_companies = data.get("selected_companies", [])
+
+    if company_key in selected_companies:
+        selected_companies.remove(company_key)
+    else:
+        selected_companies.append(company_key)
+
+    await state.update_data(selected_companies=selected_companies)
+
+    await callback.message.edit_reply_markup(
+        reply_markup=get_admin_company_keyboard(user_id, selected_companies)
+    )
+    await callback.answer()
+
+
+@dp.callback_query(lambda c: c.data.startswith("admin_set_company_confirm_"))
+async def callback_admin_set_company_confirm(
+    callback: CallbackQuery, state: FSMContext
+):
+    """Обработчик подтверждения выбранных компаний (админ)"""
+    if not AuthService.is_admin(callback.from_user.id):
+        await callback.answer("❌ У вас нет прав администратора", show_alert=True)
+        return
+
+    data = await state.get_data()
+    selected_companies = data.get("selected_companies", [])
+    user_id = data.get("edit_user_id")
+
+    if not user_id:
+        user_id = int(callback.data.split("_")[-1])
+
+    from database import UserRepository, SessionLocal
+
+    db = SessionLocal()
+    user_repo = UserRepository(db)
+    user = user_repo.get_by_id(user_id)
+
+    if not user:
+        db.close()
+        await callback.answer("❌ Пользователь не найден", show_alert=True)
+        return
+
+    user.companies = selected_companies
+    db.commit()
+    db.close()
+
+    await state.clear()
+
+    class MockCallback:
+        def __init__(self, original, new_data):
+            self.data = new_data
+            self.from_user = original.from_user
+            self.message = original.message
+            self.answer = original.answer
+
+    await callback_admin_user(MockCallback(callback, f"admin_user_{user_id}"))
 
 
 @dp.callback_query(lambda c: c.data.startswith("admin_delete_user_"))

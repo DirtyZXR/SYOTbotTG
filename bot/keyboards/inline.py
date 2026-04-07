@@ -285,23 +285,31 @@ def get_access_date_keyboard(user_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def get_admin_company_keyboard(user_id: int) -> InlineKeyboardMarkup:
-    """Клавиатура выбора компании для администратора"""
+from typing import Optional
+
+
+def get_admin_company_keyboard(
+    user_id: int, selected_companies: Optional[list[str]] = None
+) -> InlineKeyboardMarkup:
+    """Клавиатура выбора компаний для администратора"""
+    if selected_companies is None:
+        selected_companies = []
     buttons = []
     for key, name in settings.COMPANY_FULL_NAMES.items():
+        prefix = "✅ " if key in selected_companies else "⬜️ "
         buttons.append(
             [
                 InlineKeyboardButton(
-                    text=name,
-                    callback_data=f"admin_set_company_{key}_{user_id}",
+                    text=f"{prefix}{name}",
+                    callback_data=f"admin_set_company_toggle_{key}_{user_id}",
                 )
             ]
         )
     buttons.append(
         [
             InlineKeyboardButton(
-                text="❌ Убрать компанию",
-                callback_data=f"admin_set_company_none_{user_id}",
+                text="✅ Сохранить",
+                callback_data=f"admin_set_company_confirm_{user_id}",
             )
         ]
     )
@@ -316,13 +324,32 @@ def get_admin_company_keyboard(user_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def get_company_selection_keyboard() -> InlineKeyboardMarkup:
+def get_company_selection_keyboard(
+    selected_companies: Optional[list[str]] = None,
+) -> InlineKeyboardMarkup:
     """Клавиатура выбора компании при регистрации"""
+    if selected_companies is None:
+        selected_companies = []
     buttons = []
     for key, name in settings.COMPANY_FULL_NAMES.items():
+        prefix = "✅ " if key in selected_companies else "⬜️ "
         buttons.append(
-            [InlineKeyboardButton(text=name, callback_data=f"reg_company_{key}")]
+            [
+                InlineKeyboardButton(
+                    text=f"{prefix}{name}", callback_data=f"reg_company_toggle_{key}"
+                )
+            ]
         )
+
+    if selected_companies:
+        buttons.append(
+            [
+                InlineKeyboardButton(
+                    text="✅ Подтвердить выбор", callback_data="reg_company_confirm"
+                )
+            ]
+        )
+
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
