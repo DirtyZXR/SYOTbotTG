@@ -36,7 +36,10 @@ from bot.keyboards import (
     get_admin_test_notification_keyboard,
     get_admin_company_keyboard,
 )
-from bot.keyboards.inline import get_admin_select_group_keyboard
+from bot.keyboards.inline import (
+    get_admin_select_group_keyboard,
+    get_admin_revoke_select_group_keyboard,
+)
 from bot.states import (
     RegistrationForm,
     FileBrowserState,
@@ -1860,6 +1863,62 @@ async def callback_admin_select_group(callback: CallbackQuery, state: FSMContext
         reply_markup=get_access_date_keyboard(user_id),
     )
     await callback.answer()
+
+
+
+@dp.callback_query(lambda c: c.data.startswith("admin_revoke_document_"))
+async def callback_admin_revoke_document(callback: CallbackQuery, state: FSMContext):
+    """Начало отзыва документа (выбор группы)"""
+    if not AuthService.is_admin(callback.from_user.id):
+        await callback.answer("❌ У вас нет прав администратора", show_alert=True)
+        return
+
+    user_id = int(callback.data.split("_")[-1])
+
+    await callback.message.edit_text(
+        "Выберите, какую группу или все документы отозвать:",
+        reply_markup=get_admin_revoke_select_group_keyboard(user_id),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(lambda c: c.data.startswith("admin_revoke_group_"))
+async def callback_admin_revoke_group(callback: CallbackQuery):
+    """Отзыв документа у пользователя"""
+    if not AuthService.is_admin(callback.from_user.id):
+        await callback.answer("❌ У вас нет прав администратора", show_alert=True)
+        return
+
+    parts = callback.data.split("_")
+    group_str = parts[3]
+    user_id = int(parts[4])
+
+    from database import UserRepository, SessionLocal
+    db = SessionLocal()
+    user_repo = UserRepository(db)
+    user = user_repo.get_by_id(user_id)
+    
+    if not user:
+        db.close()
+        await callback.answer("❌ Пользователь не найден", show_alert=True)
+        return
+
+    if group_str == "all":
+        user_repo.revoke_document(user)
+    else:
+        user_repo.revoke_document(user, int(group_str))
+
+    db.close()
+
+    class MockCallback:
+        def __init__(self, original, new_data):
+            self.data = new_data
+            self.from_user = original.from_user
+            self.message = original.message
+            self.answer = original.answer
+
+    await callback.answer("✅ Документ отозван")
+    await callback_admin_user(MockCallback(callback, f"admin_user_{user_id}"))
 
 
 @dp.callback_query(lambda c: c.data.startswith("admin_grant_document_"))

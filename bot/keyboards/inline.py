@@ -226,6 +226,10 @@ def get_admin_user_keyboard(user_id: int) -> InlineKeyboardMarkup:
                 text="📅 Выдать документ",
                 callback_data=f"admin_set_access_date_{user_id}",
             ),
+            InlineKeyboardButton(
+                text="❌ Удалить документ",
+                callback_data=f"admin_revoke_document_{user_id}",
+            ),
         ],
         [
             InlineKeyboardButton(
@@ -391,4 +395,28 @@ def get_admin_select_group_keyboard(user_id: int) -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="⬅️ Назад", callback_data=f"admin_user_{user_id}")
     )
     builder.adjust(2, 1)
+    return builder.as_markup()
+
+
+def get_admin_revoke_select_group_keyboard(user_id: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.add(
+        InlineKeyboardButton(
+            text="II группа", callback_data=f"admin_revoke_group_2_{user_id}"
+        )
+    )
+    builder.add(
+        InlineKeyboardButton(
+            text="III группа", callback_data=f"admin_revoke_group_3_{user_id}"
+        )
+    )
+    builder.add(
+        InlineKeyboardButton(
+            text="Все документы", callback_data=f"admin_revoke_group_all_{user_id}"
+        )
+    )
+    builder.add(
+        InlineKeyboardButton(text="⬅️ Назад", callback_data=f"admin_user_{user_id}")
+    )
+    builder.adjust(2, 1, 1)
     return builder.as_markup()

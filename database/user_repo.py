@@ -128,6 +128,26 @@ class UserRepository:
         self.db.refresh(user)
         return user
 
+    def revoke_document(self, user: User, group_num: Optional[int] = None) -> User:
+        """Отзыв документа у пользователя"""
+        if group_num == 3:
+            user.group3_passed_at = None
+        elif group_num == 2:
+            user.group2_passed_at = None
+            user.group3_passed_at = None
+            user.is_verified = False
+            user.access_granted_at = None
+        else:
+            # Revoke all
+            user.group2_passed_at = None
+            user.group3_passed_at = None
+            user.is_verified = False
+            user.access_granted_at = None
+
+        self.db.commit()
+        self.db.refresh(user)
+        return user
+
     # ==================== Delete ====================
 
     def delete_user(self, user: User) -> None:
@@ -183,6 +203,14 @@ class UserRepository:
     def update_email(self, user: User, email: str) -> User:
         """Обновление email пользователя"""
         user.email = email
+        self.db.commit()
+        self.db.refresh(user)
+        return user
+
+    def update_user(self, user: User, data: dict) -> User:
+        """Обновление произвольных полей пользователя"""
+        for key, value in data.items():
+            setattr(user, key, value)
         self.db.commit()
         self.db.refresh(user)
         return user

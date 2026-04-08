@@ -12,6 +12,7 @@ from .inline import (
     get_admin_company_keyboard,
     get_test_cancel_keyboard,
     get_admin_test_notification_keyboard,
+    get_admin_revoke_select_group_keyboard,
 )
 from .reply import (
     get_main_menu_keyboard,
@@ -46,4 +47,5 @@ __all__ = [
     "get_test_cancel_keyboard",
     "get_admin_test_notification_keyboard",
     "get_leaderboard_keyboard",
+    "get_admin_revoke_select_group_keyboard",
 ]
