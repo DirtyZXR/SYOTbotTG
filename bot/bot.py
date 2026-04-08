@@ -896,14 +896,13 @@ async def process_menu_stats(message: Message, state: FSMContext):
         return
 
     from database import SessionLocal, DocumentDownloadRepository
-    from datetime import datetime
+    from bot.keyboards.inline import get_admin_download_stats_keyboard
 
-    now = datetime.now()
     db = SessionLocal()
     try:
         repo = DocumentDownloadRepository(db)
-        user_downloads = repo.get_user_monthly_stats(user.id, now.year, now.month)
-        global_downloads = repo.get_global_monthly_stats(now.year, now.month)
+        user_history = repo.get_history_grouped(user.id)
+        global_history = repo.get_history_grouped()
     finally:
         db.close()
 
@@ -921,16 +920,40 @@ async def process_menu_stats(message: Message, state: FSMContext):
         "Ноябрь",
         "Декабрь",
     ]
-    current_month_name = months[now.month - 1]
 
-    msg = (
-        f"📊 <b>Статистика скачиваний</b>\n\n"
-        f"📅 Текущий месяц: <b>{current_month_name}</b>\n\n"
-        f"📥 Ваши скачивания: <b>{user_downloads}</b>\n"
-        f"🏢 Всего скачиваний сотрудниками: <b>{global_downloads}</b>"
+    stats_by_period = {}
+    for item in global_history:
+        period = (item["year"], item["month"])
+        if period not in stats_by_period:
+            stats_by_period[period] = {"global": 0, "user": 0}
+        stats_by_period[period]["global"] += item["count"]
+
+    for item in user_history:
+        period = (item["year"], item["month"])
+        if period not in stats_by_period:
+            stats_by_period[period] = {"global": 0, "user": 0}
+        stats_by_period[period]["user"] += item["count"]
+
+    msg = "📊 <b>Статистика скачиваний</b>\n\n"
+
+    if not stats_by_period:
+        msg += "Нет данных о скачиваниях."
+    else:
+        for year, month in sorted(stats_by_period.keys(), reverse=True):
+            month_idx = int(month) - 1
+            month_name = months[month_idx]
+            data = stats_by_period[(year, month)]
+            msg += f"📅 <b>{month_name} {year}</b>\n"
+            msg += f"📥 Ваши скачивания: <b>{data['user']}</b>\n"
+            msg += f"🏢 Всего скачиваний сотрудниками: <b>{data['global']}</b>\n\n"
+
+    reply_markup = None
+    if AuthService.is_admin(user.telegram_id):
+        reply_markup = get_admin_download_stats_keyboard()
+
+    await message.answer(
+        msg.strip(), parse_mode=ParseMode.HTML, reply_markup=reply_markup
     )
-
-    await message.answer(msg, parse_mode=ParseMode.HTML)
 
 
 @dp.message(F.text == "🏆 Рейтинг")
@@ -1428,6 +1451,149 @@ async def process_profile_edit_email(message: Message, state: FSMContext):
 
 
 # ==================== Admin Callback Handlers ====================
+
+
+@dp.callback_query(F.data.startswith("admin_download_stats_"))
+async def callback_admin_download_stats(callback: CallbackQuery, state: FSMContext):
+    if not AuthService.is_admin(callback.from_user.id):
+        await callback.answer("❌ У вас нет прав администратора", show_alert=True)
+        return
+
+    if callback.data == "admin_download_stats_back":
+        await state.clear()
+        user = AuthService.get_user(callback.from_user.id)
+        if not user:
+            await callback.answer("❌ Пользователь не найден")
+            return
+
+        from database import SessionLocal, DocumentDownloadRepository
+        from bot.keyboards.inline import get_admin_download_stats_keyboard
+
+        db = SessionLocal()
+        try:
+            repo = DocumentDownloadRepository(db)
+            user_history = repo.get_history_grouped(user.id)
+            global_history = repo.get_history_grouped()
+        finally:
+            db.close()
+
+        months = [
+            "Январь",
+            "Февраль",
+            "Март",
+            "Апрель",
+            "Май",
+            "Июнь",
+            "Июль",
+            "Август",
+            "Сентябрь",
+            "Октябрь",
+            "Ноябрь",
+            "Декабрь",
+        ]
+
+        stats_by_period = {}
+        for item in global_history:
+            period = (item["year"], item["month"])
+            if period not in stats_by_period:
+                stats_by_period[period] = {"global": 0, "user": 0}
+            stats_by_period[period]["global"] += item["count"]
+
+        for item in user_history:
+            period = (item["year"], item["month"])
+            if period not in stats_by_period:
+                stats_by_period[period] = {"global": 0, "user": 0}
+            stats_by_period[period]["user"] += item["count"]
+
+        msg = "📊 <b>Статистика скачиваний</b>\n\n"
+
+        if not stats_by_period:
+            msg += "Нет данных о скачиваниях."
+        else:
+            for year, month in sorted(stats_by_period.keys(), reverse=True):
+                month_idx = int(month) - 1
+                month_name = months[month_idx]
+                data = stats_by_period[(year, month)]
+                msg += f"📅 <b>{month_name} {year}</b>\n"
+                msg += f"📥 Ваши скачивания: <b>{data['user']}</b>\n"
+                msg += f"🏢 Всего скачиваний сотрудниками: <b>{data['global']}</b>\n\n"
+
+        reply_markup = None
+        if AuthService.is_admin(user.telegram_id):
+            reply_markup = get_admin_download_stats_keyboard()
+
+        try:
+            await callback.message.edit_text(
+                msg.strip(), parse_mode=ParseMode.HTML, reply_markup=reply_markup
+            )
+        except Exception:
+            pass
+        await callback.answer()
+        return
+
+    try:
+        page = int(callback.data.split("_")[-1])
+    except ValueError:
+        page = 1
+
+    limit = 10
+    offset = (page - 1) * limit
+
+    from database import SessionLocal, DocumentDownloadRepository
+    from core.file_service import FileService
+    from bot.keyboards.inline import get_download_leaderboard_keyboard
+
+    db = SessionLocal()
+    try:
+        repo = DocumentDownloadRepository(db)
+        leaders, total_users = repo.get_download_leaderboard(limit=limit, offset=offset)
+        total_files = FileService.count_pdf_docx_files()
+    finally:
+        db.close()
+
+    total_pages = (total_users + limit - 1) // limit if total_users > 0 else 1
+
+    msg = f"📈 <b>Статистика по сотрудникам (страница {page}/{total_pages})</b>\n\n"
+    msg += f"Всего файлов в базе: <b>{total_files}</b>\n\n"
+
+    if not leaders:
+        msg += "Нет данных о сотрудниках."
+    else:
+        for i, item in enumerate(leaders):
+            place = i + 1 + offset
+            user_obj = item["user"]
+            downloads = item["downloads"]
+
+            percent = (downloads / total_files * 100) if total_files > 0 else 0
+
+            name = (
+                user_obj.full_name
+                or user_obj.username
+                or user_obj.email
+                or f"ID: {user_obj.id}"
+            )
+
+            medal = ""
+            if place == 1:
+                medal = "🥇 "
+            elif place == 2:
+                medal = "🥈 "
+            elif place == 3:
+                medal = "🥉 "
+
+            msg += f"{place}. {medal}<b>{name}</b>\n"
+            msg += f"   Скачано: {downloads} файлов ({percent:.1f}%)\n\n"
+
+    keyboard = get_download_leaderboard_keyboard(leaders, page, total_pages)
+
+    try:
+        await callback.message.edit_text(
+            msg, parse_mode=ParseMode.HTML, reply_markup=keyboard
+        )
+    except Exception:
+        pass
+
+    await callback.answer()
 
 
 @dp.callback_query(F.data.startswith("admin_list_users_"))
