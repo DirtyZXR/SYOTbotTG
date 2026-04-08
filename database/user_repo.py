@@ -51,6 +51,18 @@ class UserRepository:
         """Получение всех пользователей"""
         return self.db.query(User).all()
 
+    def get_users_count(self) -> int:
+        return self.db.query(User).count()
+
+    def get_users_paginated(self, limit: int, offset: int) -> Sequence[User]:
+        return (
+            self.db.query(User)
+            .order_by(User.id.desc())
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+
     def get_all_verified_users(self) -> List[User]:
         """Получение всех верифицированных пользователей, кроме админов"""
         return (
