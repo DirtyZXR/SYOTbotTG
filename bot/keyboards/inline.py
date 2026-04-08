@@ -466,3 +466,51 @@ def get_paginated_users_keyboard(
     )
 
     return builder.as_markup()
+
+def get_admin_download_stats_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура для администратора: статистика по сотрудникам."""
+    buttons = [
+        [
+            InlineKeyboardButton(
+                text="📈 Статистика по сотрудникам",
+                callback_data="admin_download_stats_1"
+            )
+        ]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+def get_download_leaderboard_keyboard(users: list, current_page: int, total_pages: int) -> InlineKeyboardMarkup:
+    """Клавиатура с пагинацией для таблицы лидеров."""
+    builder = InlineKeyboardBuilder()
+
+    # В данном случае, так как мы выводим список текстом,
+    # кнопки пользователей могут не понадобиться. Но если нужны, можно добавить.
+    # Если мы просто показываем список в тексте сообщения, то нужны только кнопки пагинации.
+    # Допустим, мы добавим только пагинацию.
+    
+    left_button = (
+        InlineKeyboardButton(
+            text="⬅️", callback_data=f"admin_download_stats_{current_page - 1}"
+        )
+        if current_page > 1
+        else InlineKeyboardButton(text="⏹", callback_data="noop")
+    )
+
+    middle_button = InlineKeyboardButton(
+        text=f"{current_page}/{total_pages}", callback_data="noop"
+    )
+
+    right_button = (
+        InlineKeyboardButton(
+            text="➡️", callback_data=f"admin_download_stats_{current_page + 1}"
+        )
+        if current_page < total_pages
+        else InlineKeyboardButton(text="⏹", callback_data="noop")
+    )
+
+    builder.row(left_button, middle_button, right_button)
+    builder.row(
+        InlineKeyboardButton(text="🔙 Назад", callback_data="admin_download_stats_back")
+    )
+
+    return builder.as_markup()

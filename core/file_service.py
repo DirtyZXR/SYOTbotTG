@@ -52,3 +52,19 @@ class FileService:
     def file_exists(path: str) -> bool:
         """Проверить существование файла"""
         return Path(path).exists()
+
+    @staticmethod
+    def count_pdf_docx_files() -> int:
+        """Подсчитать общее количество файлов PDF и DOC(X) в папке документов"""
+        root = FileService.get_documents_root()
+        if not root.exists() or not root.is_dir():
+            return 0
+
+        count = 0
+        valid_extensions = {".pdf", ".docx", ".doc"}
+
+        for file_path in root.rglob("*"):
+            if file_path.is_file() and file_path.suffix.lower() in valid_extensions:
+                count += 1
+
+        return count

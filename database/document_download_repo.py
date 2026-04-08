@@ -54,3 +54,44 @@ class DocumentDownloadRepository:
             )
             .count()
         )
+
+    def get_history_grouped(self, user_id: int = None) -> List[dict]:
+        """Получить сгруппированную историю скачиваний."""
+        year_expr = func.strftime("%Y", DocumentDownload.downloaded_at).label("year")
+        month_expr = func.strftime("%m", DocumentDownload.downloaded_at).label("month")
+
+        query = self.db.query(
+            year_expr, month_expr, func.count(DocumentDownload.id).label("count")
+        )
+
+        if user_id is not None:
+            query = query.filter(DocumentDownload.user_id == user_id)
+
+        query = query.group_by(year_expr, month_expr).order_by(
+            year_expr.desc(), month_expr.desc()
+        )
+
+        results = query.all()
+        return [
+            {"year": row.year, "month": row.month, "count": row.count}
+            for row in results
+        ]
+
+    def get_download_leaderboard(
+        self, limit: int, offset: int
+    ) -> Tuple[List[dict], int]:
+        """Получить таблицу лидеров по скачиваниям."""
+        total_count = self.db.query(User).filter(User.is_verified == True).count()
+
+        query = (
+            self.db.query(User, func.count(DocumentDownload.id).label("downloads"))
+            .outerjoin(DocumentDownload, User.id == DocumentDownload.user_id)
+            .filter(User.is_verified == True)
+            .group_by(User.id)
+            .order_by(func.count(DocumentDownload.id).desc(), User.id)
+            .limit(limit)
+            .offset(offset)
+        )
+
+        results = query.all()
+        return [{"user": row[0], "downloads": row[1]} for row in results], total_count
