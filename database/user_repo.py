@@ -1,7 +1,7 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, func
 from models.user import User
-from typing import Optional, List
+from typing import Optional, List, Sequence
 from datetime import datetime, timedelta
 
 
@@ -106,6 +106,8 @@ class UserRepository:
         # Сбрасываем флаги уведомлений по группе 3, т.к. дата изменилась
         user.notified_3g_7d = False
         user.notified_3g_1d = False
+        user.notified_3g_exp_7d = False
+        user.notified_3g_exp_1d = False
         self.db.commit()
         self.db.refresh(user)
         return user
@@ -190,7 +192,7 @@ class UserRepository:
                 User.is_verified == True,
                 User.is_admin == False,
                 User.access_granted_at != None,
-                User.access_granted_at + timedelta(days=358) <= now,
+                User.access_granted_at <= now - timedelta(days=358),
             )
             .all()
         )
@@ -207,8 +209,8 @@ class UserRepository:
                 User.is_verified == True,
                 User.is_admin == False,
                 User.access_granted_at != None,
-                User.access_granted_at + timedelta(days=358) <= threshold,
-                User.access_granted_at + timedelta(days=358) > now,
+                User.access_granted_at <= threshold - timedelta(days=358),
+                User.access_granted_at > now - timedelta(days=358),
                 getattr(User, notified_field) == False,
             )
             .all()
@@ -230,8 +232,8 @@ class UserRepository:
                 User.group2_passed_at != None,
                 User.access_granted_at != None,
                 User.group3_passed_at == None,  # Ещё не сдал 3
-                User.access_granted_at + timedelta(days=90) <= threshold,
-                User.access_granted_at + timedelta(days=90) > now,
+                User.access_granted_at <= threshold - timedelta(days=90),
+                User.access_granted_at > now - timedelta(days=90),
                 getattr(User, notified_field) == False,
             )
             .all()
@@ -250,6 +252,30 @@ class UserRepository:
                 User.is_admin == False,
                 User.group3_passed_at != None,
                 func.date(User.group3_passed_at) == check_date,
+            )
+            .all()
+        )
+        return [u for u in users if u.companies != ["consulting"]]
+
+    def get_users_for_group3_expiration_warning(
+        self, session: "AsyncSession", days: int
+    ) -> Sequence[User]:
+        """Пользователи, у которых истекает 3 группа через N дней (ещё не уведомлены)"""
+        now = datetime.now()
+        threshold = now + timedelta(days=days)
+        notified_field = "notified_3g_exp_7d" if days == 7 else "notified_3g_exp_1d"
+
+        # Fallback for compatibility if session is not provided or lacks .query()
+        db_session = session if hasattr(session, "query") else self.db
+
+        users = (
+            db_session.query(User)
+            .filter(
+                User.is_admin == False,
+                User.group3_passed_at != None,
+                User.group3_passed_at <= threshold - timedelta(days=358),
+                User.group3_passed_at > now - timedelta(days=358),
+                getattr(User, notified_field) == False,
             )
             .all()
         )

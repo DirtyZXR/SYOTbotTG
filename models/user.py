@@ -30,6 +30,12 @@ class User(Base):
     notified_3g_1d = Column(
         Boolean, default=False
     )  # Уведомление за 1 день до открытия группы 3
+    notified_3g_exp_7d = Column(
+        Boolean, default=False
+    )  # Уведомление за 7 дней до истечения группы 3
+    notified_3g_exp_1d = Column(
+        Boolean, default=False
+    )  # Уведомление за 1 день до истечения группы 3
     created_at = Column(DateTime, server_default=func.now())
     access_granted_at = Column(DateTime)  # Дата выдачи документа
 
