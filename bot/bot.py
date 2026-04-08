@@ -462,7 +462,23 @@ async def _get_welcome_message(user_id: int) -> str:
         "✅ Информировать о предстоящих событиях\n"
     )
 
-    if user and user.group3_passed_at:
+    if user and getattr(user, "group5_passed_at", None):
+        expiry_date = user.group5_passed_at + timedelta(days=365)
+        days_left = (expiry_date.date() - datetime.now().date()).days
+        if days_left > 0:
+            return (
+                f"✅ V группа до и выше 1000В сдана, осталось {days_left} дн.\n\n"
+                f"{base_message}"
+            )
+    elif user and getattr(user, "group4_passed_at", None):
+        expiry_date = user.group4_passed_at + timedelta(days=365)
+        days_left = (expiry_date.date() - datetime.now().date()).days
+        if days_left > 0:
+            return (
+                f"✅ IV группа до и выше 1000В сдана, осталось {days_left} дн.\n\n"
+                f"{base_message}"
+            )
+    elif user and user.group3_passed_at:
         expiry_date = user.group3_passed_at + timedelta(days=365)
         days_left = (expiry_date.date() - datetime.now().date()).days
         if days_left > 0:
@@ -1036,7 +1052,21 @@ async def process_menu_profile(message: Message, state: FSMContext):
         from core.test_service import get_group3_unlock_date
 
         msg += "\n<b>📊 Статус тестирования:</b>\n"
-        if user.group3_passed_at:
+        if getattr(user, "group5_passed_at", None):
+            expiry_date = user.group5_passed_at + timedelta(days=365)
+            days_left = (expiry_date.date() - datetime.now().date()).days
+            if days_left > 0:
+                msg += f"✅ V группа до и выше 1000В (действует еще {days_left} дн.)\n"
+            else:
+                msg += "❌ V группа до и выше 1000В (срок действия истек)\n"
+        elif getattr(user, "group4_passed_at", None):
+            expiry_date = user.group4_passed_at + timedelta(days=365)
+            days_left = (expiry_date.date() - datetime.now().date()).days
+            if days_left > 0:
+                msg += f"✅ IV группа до и выше 1000В (действует еще {days_left} дн.)\n"
+            else:
+                msg += "❌ IV группа до и выше 1000В (срок действия истек)\n"
+        elif user.group3_passed_at:
             expiry_date = user.group3_passed_at + timedelta(days=365)
             days_left = (expiry_date.date() - datetime.now().date()).days
             if days_left > 0:
@@ -2369,9 +2399,23 @@ async def _notify_user_document_granted(bot: Bot, user, granted_group: int | Non
     try:
         group_num = granted_group
         if group_num is None:
-            group_num = 3 if user.group3_passed_at is not None else 2
+            if getattr(user, "group5_passed_at", None):
+                group_num = 5
+            elif getattr(user, "group4_passed_at", None):
+                group_num = 4
+            elif getattr(user, "group3_passed_at", None):
+                group_num = 3
+            else:
+                group_num = 2
 
-        group_name = "III группу до 1000В" if group_num == 3 else "II группу до 1000В"
+        if group_num == 5:
+            group_name = "V группу до и выше 1000В"
+        elif group_num == 4:
+            group_name = "IV группу до и выше 1000В"
+        elif group_num == 3:
+            group_name = "III группу до 1000В"
+        else:
+            group_name = "II группу до 1000В"
 
         text = f"Вам выдано удостоверение по электробезопасности на {group_name}, оно актуально 358 дней."
 

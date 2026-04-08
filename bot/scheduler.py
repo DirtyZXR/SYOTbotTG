@@ -98,7 +98,7 @@ async def _run_daily_checks(bot):
                         f"Failed to notify {user.telegram_id} about 3g opening in {days}d: {e}"
                     )
 
-        # 6. Уведомления об истечении 3 группы (за 7 и 1 день)
+        # --- Проверка истечения 3 группы ---
         admin_ids = user_repo.get_admin_ids()
         for days, days_str, flag in [
             (7, "дней", "notified_3g_exp_7d"),
@@ -139,6 +139,90 @@ async def _run_daily_checks(bot):
                 except Exception as e:
                     logger.warning(
                         f"Failed to notify {user.telegram_id} about 3g exp in {days}d: {e}"
+                    )
+
+        # --- Проверка истечения 4 группы ---
+        for days, days_str, flag in [
+            (7, "дней", "notified_4g_exp_7d"),
+            (1, "день", "notified_4g_exp_1d"),
+        ]:
+            users_expiring = user_repo.get_users_for_group4_expiration_warning(db, days)
+            for user in users_expiring:
+                try:
+                    await bot.send_message(
+                        user.telegram_id,
+                        f"Срок действия удостоверения по электробезопасности на IV группу до и выше 1000В заканчивается через {days} {days_str}. Для продления удостоверения просьба обратиться в службу охраны труда.",
+                    )
+
+                    keyboard = InlineKeyboardMarkup(
+                        inline_keyboard=[
+                            [
+                                InlineKeyboardButton(
+                                    text="Продлить удостоверение",
+                                    callback_data=f"admin_grant_document_{user.id}",
+                                )
+                            ]
+                        ]
+                    )
+
+                    for admin_id in admin_ids:
+                        try:
+                            await bot.send_message(
+                                admin_id,
+                                f"У сотрудника {user.full_name} через {days} {days_str} истекает удостоверение на IV группу, нужно обновить.",
+                                reply_markup=keyboard,
+                            )
+                        except Exception as e:
+                            logger.warning(
+                                f"Failed to notify admin {admin_id} about 4g exp for {user.telegram_id}: {e}"
+                            )
+
+                    user_repo.mark_notified(user, flag)
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to notify {user.telegram_id} about 4g exp in {days}d: {e}"
+                    )
+
+        # --- Проверка истечения 5 группы ---
+        for days, days_str, flag in [
+            (7, "дней", "notified_5g_exp_7d"),
+            (1, "день", "notified_5g_exp_1d"),
+        ]:
+            users_expiring = user_repo.get_users_for_group5_expiration_warning(db, days)
+            for user in users_expiring:
+                try:
+                    await bot.send_message(
+                        user.telegram_id,
+                        f"Срок действия удостоверения по электробезопасности на V группу до и выше 1000В заканчивается через {days} {days_str}. Для продления удостоверения просьба обратиться в службу охраны труда.",
+                    )
+
+                    keyboard = InlineKeyboardMarkup(
+                        inline_keyboard=[
+                            [
+                                InlineKeyboardButton(
+                                    text="Продлить удостоверение",
+                                    callback_data=f"admin_grant_document_{user.id}",
+                                )
+                            ]
+                        ]
+                    )
+
+                    for admin_id in admin_ids:
+                        try:
+                            await bot.send_message(
+                                admin_id,
+                                f"У сотрудника {user.full_name} через {days} {days_str} истекает удостоверение на V группу, нужно обновить.",
+                                reply_markup=keyboard,
+                            )
+                        except Exception as e:
+                            logger.warning(
+                                f"Failed to notify admin {admin_id} about 5g exp for {user.telegram_id}: {e}"
+                            )
+
+                    user_repo.mark_notified(user, flag)
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to notify {user.telegram_id} about 5g exp in {days}d: {e}"
                     )
 
         # Обновляем лог
