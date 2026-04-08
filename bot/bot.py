@@ -1320,9 +1320,28 @@ async def process_profile_edit_name(message: Message, state: FSMContext):
         await message.answer("❌ Пользователь не найден.")
         return
 
+    old_name = user.full_name
     user_repo.update_full_name(user, full_name)
+    admin_ids = user_repo.get_admin_ids()
+
+    user_contact = (
+        f"@{user.username}" if user.username else f"Telegram ID: {user.telegram_id}"
+    )
+
     db.close()
     await state.clear()
+
+    for admin_id in admin_ids:
+        try:
+            await message.bot.send_message(
+                admin_id,
+                f"📝 <b>Пользователь изменил ФИО:</b>\n\nБыло: {old_name}\nСтало: {full_name}\n\nКонтакт: {user_contact}",
+                parse_mode=ParseMode.HTML,
+            )
+        except Exception as e:
+            logger.error(
+                f"Failed to send full_name update notification to admin {admin_id}: {e}"
+            )
 
     await message.answer(
         f"✅ ФИО обновлено: {full_name}",
@@ -1371,9 +1390,28 @@ async def process_profile_edit_email(message: Message, state: FSMContext):
         await message.answer("❌ Пользователь не найден.")
         return
 
+    old_email = user.email
     user_repo.update_email(user, email)
+    admin_ids = user_repo.get_admin_ids()
+
+    user_contact = (
+        f"@{user.username}" if user.username else f"Telegram ID: {user.telegram_id}"
+    )
+
     db.close()
     await state.clear()
+
+    for admin_id in admin_ids:
+        try:
+            await message.bot.send_message(
+                admin_id,
+                f"📝 <b>Пользователь изменил Email:</b>\n\nБыло: {old_email}\nСтало: {email}\n\nКонтакт: {user_contact}",
+                parse_mode=ParseMode.HTML,
+            )
+        except Exception as e:
+            logger.error(
+                f"Failed to send email update notification to admin {admin_id}: {e}"
+            )
 
     await message.answer(
         f"✅ Email обновлён: {email}",
