@@ -1,3 +1,4 @@
+from aiogram.exceptions import TelegramAPIError
 import asyncio
 from aiogram import Bot, Dispatcher, F
 from aiogram.enums import ParseMode
@@ -1883,7 +1884,7 @@ async def callback_admin_grant_document(callback: CallbackQuery, state: FSMConte
 
 
 @dp.callback_query(lambda c: c.data.startswith("admin_set_today_"))
-async def callback_admin_set_today(callback: CallbackQuery, state: FSMContext):
+async def callback_admin_set_today(callback: CallbackQuery, state: FSMContext, bot: Bot):
     """Установка сегодняшней даты выдачи"""
     if not AuthService.is_admin(callback.from_user.id):
         await callback.answer("❌ У вас нет прав администратора", show_alert=True)
@@ -1908,6 +1909,7 @@ async def callback_admin_set_today(callback: CallbackQuery, state: FSMContext):
         return
 
     user_repo.set_access_date(user, datetime.now(), granted_group=granted_group)
+    await _notify_user_document_granted(bot, user, granted_group)
     db.close()
 
     await callback.message.edit_text(
@@ -1918,7 +1920,7 @@ async def callback_admin_set_today(callback: CallbackQuery, state: FSMContext):
 
 
 @dp.message(StateFilter(AdminState.setting_user_access_date))
-async def process_admin_set_access_date(message: Message, state: FSMContext):
+async def process_admin_set_access_date(message: Message, state: FSMContext, bot: Bot):
     """Обработка ввода даты выдачи"""
     if not AuthService.is_admin(message.from_user.id):
         await state.clear()
@@ -1949,6 +1951,7 @@ async def process_admin_set_access_date(message: Message, state: FSMContext):
         return
 
     user_repo.set_access_date(user, date, granted_group=granted_group)
+    await _notify_user_document_granted(bot, user, granted_group)
     db.close()
 
     await message.answer(
@@ -2084,6 +2087,26 @@ async def callback_back_to_menu(callback: CallbackQuery, state: FSMContext):
 
 # ==================== Main Function ====================
 
+
+
+async def _notify_user_document_granted(bot: Bot, user, granted_group: int | None):
+    try:
+        group_num = granted_group
+        if group_num is None:
+            group_num = 3 if user.group3_passed_at is not None else 2
+        
+        group_name = "III группу до 1000В" if group_num == 3 else "II группу до 1000В"
+        
+        text = f"Вам выдано удостоверение по электробезопасности на {group_name}, оно актуально 358 дней."
+        
+        if group_num == 2:
+            text += "\nТест на III группу до 1000В будет доступен через 90 дней."
+            
+        await bot.send_message(user.telegram_id, text)
+    except TelegramAPIError as e:
+        logger.error(f"Failed to send notification to user {user.telegram_id}: {e}")
+    except Exception as e:
+        logger.error(f"Error in _notify_user_document_granted: {e}")
 
 async def main():
     """Основная функция запуска бота"""
