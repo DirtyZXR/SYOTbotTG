@@ -1323,6 +1323,11 @@ async def process_profile_edit_name(message: Message, state: FSMContext):
     old_name = user.full_name
     user_repo.update_full_name(user, full_name)
     admin_ids = user_repo.get_admin_ids()
+
+    user_contact = (
+        f"@{user.username}" if user.username else f"Telegram ID: {user.telegram_id}"
+    )
+
     db.close()
     await state.clear()
 
@@ -1330,7 +1335,7 @@ async def process_profile_edit_name(message: Message, state: FSMContext):
         try:
             await message.bot.send_message(
                 admin_id,
-                f"📝 <b>Пользователь изменил ФИО:</b>\n\nБыло: {old_name}\nСтало: {full_name}\n\nTelegram ID: {user.telegram_id}",
+                f"📝 <b>Пользователь изменил ФИО:</b>\n\nБыло: {old_name}\nСтало: {full_name}\n\nКонтакт: {user_contact}",
                 parse_mode=ParseMode.HTML,
             )
         except Exception as e:
@@ -1388,6 +1393,11 @@ async def process_profile_edit_email(message: Message, state: FSMContext):
     old_email = user.email
     user_repo.update_email(user, email)
     admin_ids = user_repo.get_admin_ids()
+
+    user_contact = (
+        f"@{user.username}" if user.username else f"Telegram ID: {user.telegram_id}"
+    )
+
     db.close()
     await state.clear()
 
@@ -1395,7 +1405,7 @@ async def process_profile_edit_email(message: Message, state: FSMContext):
         try:
             await message.bot.send_message(
                 admin_id,
-                f"📝 <b>Пользователь изменил Email:</b>\n\nБыло: {old_email}\nСтало: {email}\n\nTelegram ID: {user.telegram_id}",
+                f"📝 <b>Пользователь изменил Email:</b>\n\nБыло: {old_email}\nСтало: {email}\n\nКонтакт: {user_contact}",
                 parse_mode=ParseMode.HTML,
             )
         except Exception as e:
