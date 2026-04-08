@@ -460,7 +460,7 @@ async def _get_welcome_message(user_id: int) -> str:
 
     if user and user.group3_passed_at:
         expiry_date = user.group3_passed_at + timedelta(days=365)
-        days_left = (expiry_date - datetime.now()).days
+        days_left = (expiry_date.date() - datetime.now().date()).days
         if days_left > 0:
             return (
                 f"✅ III группа до 1000В сдана, осталось {days_left} дн.\n\n"
@@ -865,7 +865,9 @@ async def process_menu_tests(message: Message, state: FSMContext):
     if user.group2_passed_at and not is_group_available(user, 3):
         unlock = get_group3_unlock_date(user)
         days_left = (
-            (unlock - datetime.now()).days if unlock and unlock > datetime.now() else 0
+            (unlock.date() - datetime.now().date()).days
+            if unlock and unlock.date() > datetime.now().date()
+            else 0
         )
         if days_left > 0:
             msg = f"✅ II группа до 1000В сдана.\n\n⏳ III группа до 1000В откроется через {days_left} дн."
@@ -1009,7 +1011,7 @@ async def process_menu_profile(message: Message, state: FSMContext):
         msg += "\n<b>📊 Статус тестирования:</b>\n"
         if user.group3_passed_at:
             expiry_date = user.group3_passed_at + timedelta(days=365)
-            days_left = (expiry_date - datetime.now()).days
+            days_left = (expiry_date.date() - datetime.now().date()).days
             if days_left > 0:
                 msg += f"✅ III группа до 1000В (действует еще {days_left} дн.)\n"
             else:
@@ -1017,8 +1019,8 @@ async def process_menu_profile(message: Message, state: FSMContext):
         elif user.group2_passed_at:
             unlock = get_group3_unlock_date(user)
             days_left = (
-                (unlock - datetime.now()).days
-                if unlock and unlock > datetime.now()
+                (unlock.date() - datetime.now().date()).days
+                if unlock and unlock.date() > datetime.now().date()
                 else 0
             )
             if days_left > 0:
@@ -1884,7 +1886,9 @@ async def callback_admin_grant_document(callback: CallbackQuery, state: FSMConte
 
 
 @dp.callback_query(lambda c: c.data.startswith("admin_set_today_"))
-async def callback_admin_set_today(callback: CallbackQuery, state: FSMContext, bot: Bot):
+async def callback_admin_set_today(
+    callback: CallbackQuery, state: FSMContext, bot: Bot
+):
     """Установка сегодняшней даты выдачи"""
     if not AuthService.is_admin(callback.from_user.id):
         await callback.answer("❌ У вас нет прав администратора", show_alert=True)
@@ -2088,25 +2092,25 @@ async def callback_back_to_menu(callback: CallbackQuery, state: FSMContext):
 # ==================== Main Function ====================
 
 
-
 async def _notify_user_document_granted(bot: Bot, user, granted_group: int | None):
     try:
         group_num = granted_group
         if group_num is None:
             group_num = 3 if user.group3_passed_at is not None else 2
-        
+
         group_name = "III группу до 1000В" if group_num == 3 else "II группу до 1000В"
-        
+
         text = f"Вам выдано удостоверение по электробезопасности на {group_name}, оно актуально 358 дней."
-        
+
         if group_num == 2:
             text += "\nТест на III группу до 1000В будет доступен через 90 дней."
-            
+
         await bot.send_message(user.telegram_id, text)
     except TelegramAPIError as e:
         logger.error(f"Failed to send notification to user {user.telegram_id}: {e}")
     except Exception as e:
         logger.error(f"Error in _notify_user_document_granted: {e}")
+
 
 async def main():
     """Основная функция запуска бота"""

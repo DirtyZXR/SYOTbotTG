@@ -15,7 +15,7 @@ def get_user_status_text(user) -> str:
         return "⏳ Документ не выдан"
     else:
         expiry = user.access_granted_at + timedelta(days=ACCESS_PERIOD_DAYS)
-        days_left = (expiry - datetime.now()).days
+        days_left = (expiry.date() - datetime.now().date()).days
         if days_left > 7:
             return f"✅ Документ выдан {user.access_granted_at.strftime('%d.%m.%Y')} (осталось {days_left} дн.)"
         elif days_left > 0:
