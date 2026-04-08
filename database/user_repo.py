@@ -97,10 +97,19 @@ class UserRepository:
         self.db.refresh(user)
         return user
 
-    def set_access_date(self, user: User, date: datetime) -> User:
+    def set_access_date(
+        self, user: User, date: datetime, granted_group: Optional[int] = None
+    ) -> User:
         """Устанавливает дату выдачи документа и сбрасывает флаги уведомлений"""
         user.is_verified = True
         user.access_granted_at = date
+
+        if granted_group == 2:
+            user.group2_passed_at = date
+        elif granted_group == 3:
+            user.group2_passed_at = date
+            user.group3_passed_at = date
+
         user.notified_7d = False
         user.notified_1d = False
         # Сбрасываем флаги уведомлений по группе 3, т.к. дата изменилась

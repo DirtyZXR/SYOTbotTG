@@ -1,4 +1,5 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 from typing import List, Optional
 from config import DOCUMENT_CATEGORIES, settings
 from core import AuthService
@@ -372,3 +373,22 @@ def get_admin_test_notification_keyboard(user_id: int) -> InlineKeyboardMarkup:
         ]
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_admin_select_group_keyboard(user_id: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.add(
+        InlineKeyboardButton(
+            text="II группа", callback_data=f"admin_select_group_2_{user_id}"
+        )
+    )
+    builder.add(
+        InlineKeyboardButton(
+            text="III группа", callback_data=f"admin_select_group_3_{user_id}"
+        )
+    )
+    builder.add(
+        InlineKeyboardButton(text="⬅️ Назад", callback_data=f"admin_user_{user_id}")
+    )
+    builder.adjust(2, 1)
+    return builder.as_markup()
