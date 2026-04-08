@@ -138,6 +138,11 @@ def get_admin_menu_keyboard() -> InlineKeyboardMarkup:
     buttons = [
         [
             InlineKeyboardButton(
+                text="👥 Все пользователи", callback_data="admin_list_users_1"
+            )
+        ],
+        [
+            InlineKeyboardButton(
                 text="🔍 Поиск пользователей", callback_data="admin_search_users"
             )
         ],
@@ -419,4 +424,45 @@ def get_admin_revoke_select_group_keyboard(user_id: int) -> InlineKeyboardMarkup
         InlineKeyboardButton(text="⬅️ Назад", callback_data=f"admin_user_{user_id}")
     )
     builder.adjust(2, 1, 1)
+    return builder.as_markup()
+
+
+def get_paginated_users_keyboard(
+    users: list, current_page: int, total_pages: int
+) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+
+    for user in users:
+        text = user.full_name or user.username or f"User {user.telegram_id}"
+        builder.add(
+            InlineKeyboardButton(text=text, callback_data=f"admin_user_{user.id}")
+        )
+
+    builder.adjust(1)
+
+    left_button = (
+        InlineKeyboardButton(
+            text="⬅️", callback_data=f"admin_list_users_{current_page - 1}"
+        )
+        if current_page > 1
+        else InlineKeyboardButton(text="⏹", callback_data="noop")
+    )
+
+    middle_button = InlineKeyboardButton(
+        text=f"{current_page}/{total_pages}", callback_data="noop"
+    )
+
+    right_button = (
+        InlineKeyboardButton(
+            text="➡️", callback_data=f"admin_list_users_{current_page + 1}"
+        )
+        if current_page < total_pages
+        else InlineKeyboardButton(text="⏹", callback_data="noop")
+    )
+
+    builder.row(left_button, middle_button, right_button)
+    builder.row(
+        InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_admin_menu")
+    )
+
     return builder.as_markup()

@@ -23,11 +23,16 @@ def get_main_menu_keyboard(user_id: Optional[int] = None) -> ReplyKeyboardMarkup
     # 1 ряд - Документы (доступны всем)
     keyboard.append([KeyboardButton(text="📚 Документы")])
 
-    # 2 ряд - Тесты и Рейтинг (только для Интеллектики)
+    # 2 ряд - Тесты (только для Интеллектики) и Рейтинг (для Интеллектики и админов)
+    row_2 = []
     if is_intellectika:
-        keyboard.append(
-            [KeyboardButton(text="📝 Тесты"), KeyboardButton(text="🏆 Рейтинг")]
-        )
+        row_2.append(KeyboardButton(text="📝 Тесты"))
+
+    if is_intellectika or is_admin:
+        row_2.append(KeyboardButton(text="🏆 Рейтинг"))
+
+    if row_2:
+        keyboard.append(row_2)
 
     # 3 ряд - Статистика и Профиль (доступны всем)
     keyboard.append(

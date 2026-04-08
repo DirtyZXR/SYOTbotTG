@@ -14,6 +14,7 @@ from core import (
     AuthService,
     DocumentService,
     NotificationService,
+    SettingsService,
 )
 from bot.keyboards import (
     get_test_groups_keyboard,
@@ -39,6 +40,7 @@ from bot.keyboards import (
 from bot.keyboards.inline import (
     get_admin_select_group_keyboard,
     get_admin_revoke_select_group_keyboard,
+    get_paginated_users_keyboard,
 )
 from bot.states import (
     RegistrationForm,
@@ -458,7 +460,6 @@ async def _get_welcome_message(user_id: int) -> str:
         "✅ Проводить тестирование\n"
         "✅ Предоставлять актуальную нормативную базу компании\n"
         "✅ Информировать о предстоящих событиях\n"
-        " Нажми кнопку «Старт» для начала работы."
     )
 
     if user and user.group3_passed_at:
@@ -936,9 +937,9 @@ async def process_menu_stats(message: Message, state: FSMContext):
 async def process_menu_leaderboard(message: Message, state: FSMContext):
     await state.clear()
     user = AuthService.get_user(message.from_user.id)
-    if not user or "intellectika" not in (user.companies or []):
+    if not user or ("intellectika" not in (user.companies or []) and not user.is_admin):
         await message.answer(
-            '❌ Функция рейтинга доступна только для сотрудников ООО "Интеллектика"'
+            '❌ Функция рейтинга доступна только для сотрудников ООО "Интеллектика" или администраторов'
         )
         return
 
@@ -1429,6 +1430,53 @@ async def process_profile_edit_email(message: Message, state: FSMContext):
 # ==================== Admin Callback Handlers ====================
 
 
+@dp.callback_query(F.data.startswith("admin_list_users_"))
+async def callback_admin_list_users(callback: CallbackQuery, state: FSMContext):
+    """Список пользователей с пагинацией"""
+    if not AuthService.is_admin(callback.from_user.id):
+        await callback.answer("❌ У вас нет прав администратора", show_alert=True)
+        return
+
+    await state.clear()
+
+    if callback.data and callback.data.endswith("noop"):
+        await callback.answer()
+        return
+
+    try:
+        page = int(callback.data.split("_")[-1])
+    except ValueError:
+        page = 1
+
+    limit = 10
+    offset = (page - 1) * limit
+
+    from database import UserRepository, SessionLocal
+    import math
+
+    db = SessionLocal()
+    user_repo = UserRepository(db)
+
+    try:
+        total_count = user_repo.get_users_count()
+        total_pages = math.ceil(total_count / limit) or 1
+        users = user_repo.get_users_paginated(limit, offset)
+    finally:
+        db.close()
+
+    await callback.message.edit_text(
+        "👥 <b>Список всех пользователей:</b>\n\nВыберите пользователя для управления:",
+        parse_mode=ParseMode.HTML,
+        reply_markup=get_paginated_users_keyboard(users, page, total_pages),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(lambda c: c.data == "noop")
+async def callback_noop(callback: CallbackQuery):
+    await callback.answer()
+
+
 @dp.callback_query(lambda c: c.data == "admin_search_users")
 async def callback_admin_search_users(callback: CallbackQuery, state: FSMContext):
     """Поиск пользователей — запрос поискового запроса"""
@@ -1865,7 +1913,6 @@ async def callback_admin_select_group(callback: CallbackQuery, state: FSMContext
     await callback.answer()
 
 
-
 @dp.callback_query(lambda c: c.data.startswith("admin_revoke_document_"))
 async def callback_admin_revoke_document(callback: CallbackQuery, state: FSMContext):
     """Начало отзыва документа (выбор группы)"""
@@ -1894,10 +1941,11 @@ async def callback_admin_revoke_group(callback: CallbackQuery):
     user_id = int(parts[4])
 
     from database import UserRepository, SessionLocal
+
     db = SessionLocal()
     user_repo = UserRepository(db)
     user = user_repo.get_by_id(user_id)
-    
+
     if not user:
         db.close()
         await callback.answer("❌ Пользователь не найден", show_alert=True)
