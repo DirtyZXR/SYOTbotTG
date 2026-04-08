@@ -1,3 +1,4 @@
+from aiogram.exceptions import TelegramAPIError
 import asyncio
 from aiogram import Bot, Dispatcher, F
 from aiogram.enums import ParseMode
@@ -35,6 +36,7 @@ from bot.keyboards import (
     get_admin_test_notification_keyboard,
     get_admin_company_keyboard,
 )
+from bot.keyboards.inline import get_admin_select_group_keyboard
 from bot.states import (
     RegistrationForm,
     FileBrowserState,
@@ -1828,8 +1830,26 @@ async def callback_admin_set_access_date(callback: CallbackQuery, state: FSMCont
 
     user_id = int(callback.data.split("_")[-1])
 
+    await callback.message.edit_text(
+        "Выберите, на какую группу выдается документ:",
+        reply_markup=get_admin_select_group_keyboard(user_id),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(lambda c: c.data.startswith("admin_select_group_"))
+async def callback_admin_select_group(callback: CallbackQuery, state: FSMContext):
+    """Выбор группы при установке даты выдачи документа"""
+    if not AuthService.is_admin(callback.from_user.id):
+        await callback.answer("❌ У вас нет прав администратора", show_alert=True)
+        return
+
+    parts = callback.data.split("_")
+    group_num = int(parts[3])
+    user_id = int(parts[4])
+
     await state.set_state(AdminState.setting_user_access_date)
-    await state.update_data(edit_user_id=user_id)
+    await state.update_data(edit_user_id=user_id, granted_group=group_num)
 
     await callback.message.edit_text(
         "📅 <b>Установка даты выдачи</b>\n\n"
@@ -1850,7 +1870,7 @@ async def callback_admin_grant_document(callback: CallbackQuery, state: FSMConte
     user_id = int(callback.data.split("_")[-1])
 
     await state.set_state(AdminState.setting_user_access_date)
-    await state.update_data(edit_user_id=user_id)
+    await state.update_data(edit_user_id=user_id, granted_group=None)
     # Удаляем клавиатуру из исходного сообщения
     await callback.message.edit_reply_markup(reply_markup=None)
 
@@ -1864,7 +1884,7 @@ async def callback_admin_grant_document(callback: CallbackQuery, state: FSMConte
 
 
 @dp.callback_query(lambda c: c.data.startswith("admin_set_today_"))
-async def callback_admin_set_today(callback: CallbackQuery, state: FSMContext):
+async def callback_admin_set_today(callback: CallbackQuery, state: FSMContext, bot: Bot):
     """Установка сегодняшней даты выдачи"""
     if not AuthService.is_admin(callback.from_user.id):
         await callback.answer("❌ У вас нет прав администратора", show_alert=True)
@@ -1872,6 +1892,9 @@ async def callback_admin_set_today(callback: CallbackQuery, state: FSMContext):
 
     user_id = int(callback.data.split("_")[-1])
     from datetime import datetime
+
+    data = await state.get_data()
+    granted_group = data.get("granted_group")
 
     await state.clear()
     from database import UserRepository, SessionLocal
@@ -1885,7 +1908,8 @@ async def callback_admin_set_today(callback: CallbackQuery, state: FSMContext):
         await callback.answer("❌ Пользователь не найден", show_alert=True)
         return
 
-    user_repo.set_access_date(user, datetime.now())
+    user_repo.set_access_date(user, datetime.now(), granted_group=granted_group)
+    await _notify_user_document_granted(bot, user, granted_group)
     db.close()
 
     await callback.message.edit_text(
@@ -1896,7 +1920,7 @@ async def callback_admin_set_today(callback: CallbackQuery, state: FSMContext):
 
 
 @dp.message(StateFilter(AdminState.setting_user_access_date))
-async def process_admin_set_access_date(message: Message, state: FSMContext):
+async def process_admin_set_access_date(message: Message, state: FSMContext, bot: Bot):
     """Обработка ввода даты выдачи"""
     if not AuthService.is_admin(message.from_user.id):
         await state.clear()
@@ -1913,6 +1937,7 @@ async def process_admin_set_access_date(message: Message, state: FSMContext):
 
     data = await state.get_data()
     user_id = data.get("edit_user_id")
+    granted_group = data.get("granted_group")
     await state.clear()
     from database import UserRepository, SessionLocal
 
@@ -1925,7 +1950,8 @@ async def process_admin_set_access_date(message: Message, state: FSMContext):
         await message.answer("❌ Пользователь не найден.")
         return
 
-    user_repo.set_access_date(user, date)
+    user_repo.set_access_date(user, date, granted_group=granted_group)
+    await _notify_user_document_granted(bot, user, granted_group)
     db.close()
 
     await message.answer(
@@ -2061,6 +2087,26 @@ async def callback_back_to_menu(callback: CallbackQuery, state: FSMContext):
 
 # ==================== Main Function ====================
 
+
+
+async def _notify_user_document_granted(bot: Bot, user, granted_group: int | None):
+    try:
+        group_num = granted_group
+        if group_num is None:
+            group_num = 3 if user.group3_passed_at is not None else 2
+        
+        group_name = "III группу до 1000В" if group_num == 3 else "II группу до 1000В"
+        
+        text = f"Вам выдано удостоверение по электробезопасности на {group_name}, оно актуально 358 дней."
+        
+        if group_num == 2:
+            text += "\nТест на III группу до 1000В будет доступен через 90 дней."
+            
+        await bot.send_message(user.telegram_id, text)
+    except TelegramAPIError as e:
+        logger.error(f"Failed to send notification to user {user.telegram_id}: {e}")
+    except Exception as e:
+        logger.error(f"Error in _notify_user_document_granted: {e}")
 
 async def main():
     """Основная функция запуска бота"""
