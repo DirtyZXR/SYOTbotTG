@@ -1885,7 +1885,7 @@ async def callback_admin_set_today(callback: CallbackQuery, state: FSMContext):
         await callback.answer("❌ Пользователь не найден", show_alert=True)
         return
 
-    user_repo.update_access_date(user, datetime.now())
+    user_repo.set_access_date(user, datetime.now())
     db.close()
 
     await callback.message.edit_text(
@@ -1925,7 +1925,7 @@ async def process_admin_set_access_date(message: Message, state: FSMContext):
         await message.answer("❌ Пользователь не найден.")
         return
 
-    user_repo.update_access_date(user, date)
+    user_repo.set_access_date(user, date)
     db.close()
 
     await message.answer(
