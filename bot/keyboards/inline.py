@@ -397,9 +397,19 @@ def get_admin_select_group_keyboard(user_id: int) -> InlineKeyboardMarkup:
         )
     )
     builder.add(
+        InlineKeyboardButton(
+            text="IV группа", callback_data=f"admin_select_group_4_{user_id}"
+        )
+    )
+    builder.add(
+        InlineKeyboardButton(
+            text="V группа", callback_data=f"admin_select_group_5_{user_id}"
+        )
+    )
+    builder.add(
         InlineKeyboardButton(text="⬅️ Назад", callback_data=f"admin_user_{user_id}")
     )
-    builder.adjust(2, 1)
+    builder.adjust(2, 2, 1)
     return builder.as_markup()
 
 
@@ -417,13 +427,23 @@ def get_admin_revoke_select_group_keyboard(user_id: int) -> InlineKeyboardMarkup
     )
     builder.add(
         InlineKeyboardButton(
+            text="IV группа", callback_data=f"admin_revoke_group_4_{user_id}"
+        )
+    )
+    builder.add(
+        InlineKeyboardButton(
+            text="V группа", callback_data=f"admin_revoke_group_5_{user_id}"
+        )
+    )
+    builder.add(
+        InlineKeyboardButton(
             text="Все документы", callback_data=f"admin_revoke_group_all_{user_id}"
         )
     )
     builder.add(
         InlineKeyboardButton(text="⬅️ Назад", callback_data=f"admin_user_{user_id}")
     )
-    builder.adjust(2, 1, 1)
+    builder.adjust(2, 2, 1, 1)
     return builder.as_markup()
 
 
@@ -467,19 +487,23 @@ def get_paginated_users_keyboard(
 
     return builder.as_markup()
 
+
 def get_admin_download_stats_keyboard() -> InlineKeyboardMarkup:
     """Клавиатура для администратора: статистика по сотрудникам."""
     buttons = [
         [
             InlineKeyboardButton(
                 text="📈 Статистика по сотрудникам",
-                callback_data="admin_download_stats_1"
+                callback_data="admin_download_stats_1",
             )
         ]
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
-def get_download_leaderboard_keyboard(users: list, current_page: int, total_pages: int) -> InlineKeyboardMarkup:
+
+def get_download_leaderboard_keyboard(
+    users: list, current_page: int, total_pages: int
+) -> InlineKeyboardMarkup:
     """Клавиатура с пагинацией для таблицы лидеров."""
     builder = InlineKeyboardBuilder()
 
@@ -487,7 +511,7 @@ def get_download_leaderboard_keyboard(users: list, current_page: int, total_page
     # кнопки пользователей могут не понадобиться. Но если нужны, можно добавить.
     # Если мы просто показываем список в тексте сообщения, то нужны только кнопки пагинации.
     # Допустим, мы добавим только пагинацию.
-    
+
     left_button = (
         InlineKeyboardButton(
             text="⬅️", callback_data=f"admin_download_stats_{current_page - 1}"

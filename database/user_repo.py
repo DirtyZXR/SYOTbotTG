@@ -116,19 +116,32 @@ class UserRepository:
         user.is_verified = True
         user.access_granted_at = date
 
-        if granted_group == 2:
+        if granted_group == 5:
             user.group2_passed_at = date
+            user.group3_passed_at = date
+            user.group4_passed_at = date
+            user.group5_passed_at = date
+        elif granted_group == 4:
+            user.group2_passed_at = date
+            user.group3_passed_at = date
+            user.group4_passed_at = date
         elif granted_group == 3:
             user.group2_passed_at = date
             user.group3_passed_at = date
+        else:
+            user.group2_passed_at = date
 
         user.notified_7d = False
         user.notified_1d = False
-        # Сбрасываем флаги уведомлений по группе 3, т.к. дата изменилась
+        # Сбрасываем флаги уведомлений по группе 3, 4, 5 т.к. дата изменилась
         user.notified_3g_7d = False
         user.notified_3g_1d = False
         user.notified_3g_exp_7d = False
         user.notified_3g_exp_1d = False
+        user.notified_4g_exp_7d = False
+        user.notified_4g_exp_1d = False
+        user.notified_5g_exp_7d = False
+        user.notified_5g_exp_1d = False
         self.db.commit()
         self.db.refresh(user)
         return user
@@ -142,17 +155,21 @@ class UserRepository:
 
     def revoke_document(self, user: User, group_num: Optional[int] = None) -> User:
         """Отзыв документа у пользователя"""
-        if group_num == 3:
+        if group_num == 5:
+            user.group5_passed_at = None
+        elif group_num == 4:
+            user.group5_passed_at = None
+            user.group4_passed_at = None
+        elif group_num == 3:
+            user.group5_passed_at = None
+            user.group4_passed_at = None
             user.group3_passed_at = None
-        elif group_num == 2:
-            user.group2_passed_at = None
-            user.group3_passed_at = None
-            user.is_verified = False
-            user.access_granted_at = None
         else:
             # Revoke all
-            user.group2_passed_at = None
+            user.group5_passed_at = None
+            user.group4_passed_at = None
             user.group3_passed_at = None
+            user.group2_passed_at = None
             user.is_verified = False
             user.access_granted_at = None
 
@@ -324,6 +341,54 @@ class UserRepository:
                 User.group3_passed_at != None,
                 User.group3_passed_at <= threshold - timedelta(days=358),
                 User.group3_passed_at > now - timedelta(days=358),
+                getattr(User, notified_field) == False,
+            )
+            .all()
+        )
+        return [u for u in users if u.companies != ["consulting"]]
+
+    def get_users_for_group4_expiration_warning(
+        self, session: "AsyncSession", days: int
+    ) -> Sequence[User]:
+        """Пользователи, у которых истекает 4 группа через N дней (ещё не уведомлены)"""
+        now = datetime.now()
+        threshold = now + timedelta(days=days)
+        notified_field = "notified_4g_exp_7d" if days == 7 else "notified_4g_exp_1d"
+
+        # Fallback for compatibility if session is not provided or lacks .query()
+        db_session = session if hasattr(session, "query") else self.db
+
+        users = (
+            db_session.query(User)
+            .filter(
+                User.is_admin == False,
+                User.group4_passed_at != None,
+                User.group4_passed_at <= threshold - timedelta(days=358),
+                User.group4_passed_at > now - timedelta(days=358),
+                getattr(User, notified_field) == False,
+            )
+            .all()
+        )
+        return [u for u in users if u.companies != ["consulting"]]
+
+    def get_users_for_group5_expiration_warning(
+        self, session: "AsyncSession", days: int
+    ) -> Sequence[User]:
+        """Пользователи, у которых истекает 5 группа через N дней (ещё не уведомлены)"""
+        now = datetime.now()
+        threshold = now + timedelta(days=days)
+        notified_field = "notified_5g_exp_7d" if days == 7 else "notified_5g_exp_1d"
+
+        # Fallback for compatibility if session is not provided or lacks .query()
+        db_session = session if hasattr(session, "query") else self.db
+
+        users = (
+            db_session.query(User)
+            .filter(
+                User.is_admin == False,
+                User.group5_passed_at != None,
+                User.group5_passed_at <= threshold - timedelta(days=358),
+                User.group5_passed_at > now - timedelta(days=358),
                 getattr(User, notified_field) == False,
             )
             .all()

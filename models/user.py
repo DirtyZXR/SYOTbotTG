@@ -36,6 +36,12 @@ class User(Base):
     notified_3g_exp_1d = Column(
         Boolean, default=False
     )  # Уведомление за 1 день до истечения группы 3
+    group4_passed_at = Column(DateTime, nullable=True)
+    group5_passed_at = Column(DateTime, nullable=True)
+    notified_4g_exp_7d = Column(Boolean, default=False)
+    notified_4g_exp_1d = Column(Boolean, default=False)
+    notified_5g_exp_7d = Column(Boolean, default=False)
+    notified_5g_exp_1d = Column(Boolean, default=False)
     created_at = Column(DateTime, server_default=func.now())
     access_granted_at = Column(DateTime)  # Дата выдачи документа
 
