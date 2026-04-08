@@ -4,6 +4,7 @@ from .user_repo import UserRepository
 from .document_repo import DocumentRepository
 from .test_repo import TestRepository
 from .test_result_repo import TestResultRepository
+from .document_download_repo import DocumentDownloadRepository
 
 __all__ = [
     "Base",
@@ -14,4 +15,5 @@ __all__ = [
     "DocumentRepository",
     "TestRepository",
     "TestResultRepository",
+    "DocumentDownloadRepository",
 ]

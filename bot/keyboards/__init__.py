@@ -23,6 +23,7 @@ from .file_browser import (
     get_folder_keyboard,
     get_back_to_menu_button,
 )
+from .leaderboard import get_leaderboard_keyboard
 
 __all__ = [
     "get_test_groups_keyboard",
@@ -44,4 +45,5 @@ __all__ = [
     "get_back_to_menu_button",
     "get_test_cancel_keyboard",
     "get_admin_test_notification_keyboard",
+    "get_leaderboard_keyboard",
 ]
