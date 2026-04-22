@@ -4,6 +4,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+PYTHON_VERSION = "3.12"
+
 
 def run_command(cmd: str, description: str):
     """Выполняет команду с выводом"""
@@ -23,9 +25,16 @@ def init_project():
 
     print("🚀 Инициализация проекта SYOTbotTG\n")
 
+    python_cmd = (
+        f"py -{PYTHON_VERSION}" if sys.platform == "win32" else f"python{PYTHON_VERSION}"
+    )
+
     # 1. Создание виртуального окружения
     if not Path("venv").exists():
-        run_command("python -m venv venv", "Создание виртуального окружения")
+        run_command(
+            f"{python_cmd} -m venv venv",
+            f"Создание виртуального окружения на Python {PYTHON_VERSION}",
+        )
     else:
         print("✅ Виртуальное окружение уже существует")
 
@@ -65,7 +74,7 @@ DOCUMENTS_PATH=./data/documents
     print("   - ADMIN_ID: Ваш Telegram ID (узнать у @userinfobot)")
     print("   - SECURITY_CODE: Код для верификации пользователей")
     print("\n2. Добавьте документы в папку data/documents/")
-    print("3. Запустите бота: python main.py")
+    print("3. Запустите бота: venv\\Scripts\\python.exe main.py")
     print("\n📚 Документация:")
     print("   - README.md - Общая информация")
     print("\n" + "=" * 50)

@@ -2,6 +2,7 @@ from database import SessionLocal, UserRepository
 from config import settings
 from models.user import User
 from utils import logger
+from typing import Optional
 
 
 class AuthService:

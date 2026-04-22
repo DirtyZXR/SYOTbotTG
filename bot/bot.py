@@ -737,6 +737,12 @@ async def callback_test_cancel(callback: CallbackQuery, state: FSMContext):
 @dp.callback_query(lambda c: c.data.startswith("leaderboard_group_"))
 async def callback_leaderboard_group(callback: CallbackQuery, state: FSMContext):
     """Пагинация и переключение групп в таблице лидеров"""
+    if not AuthService.is_admin(callback.from_user.id):
+        await callback.answer(
+            "❌ Функция рейтинга доступна только администраторам", show_alert=True
+        )
+        return
+
     parts = callback.data.split("_")
     group = int(parts[2])
     page = int(parts[3])
@@ -907,8 +913,8 @@ async def process_menu_tests(message: Message, state: FSMContext):
 async def process_menu_stats(message: Message, state: FSMContext):
     await state.clear()
     user = AuthService.get_user(message.from_user.id)
-    if not user:
-        await message.answer("❌ Пользователь не найден")
+    if not user or not user.is_admin:
+        await message.answer("❌ Функция статистики доступна только администраторам")
         return
 
     from database import SessionLocal, DocumentDownloadRepository
@@ -976,10 +982,8 @@ async def process_menu_stats(message: Message, state: FSMContext):
 async def process_menu_leaderboard(message: Message, state: FSMContext):
     await state.clear()
     user = AuthService.get_user(message.from_user.id)
-    if not user or ("intellectika" not in (user.companies or []) and not user.is_admin):
-        await message.answer(
-            '❌ Функция рейтинга доступна только для сотрудников ООО "Интеллектика" или администраторов'
-        )
+    if not user or not user.is_admin:
+        await message.answer("❌ Функция рейтинга доступна только администраторам")
         return
 
     from database import SessionLocal, TestResultRepository
