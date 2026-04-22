@@ -16,6 +16,7 @@ echo.
 echo [2/4] Checking virtual environment...
 if not exist "venv\Scripts\python.exe" (
     echo [ERROR] Virtual environment "venv" not found in the current folder!
+    echo Run recreate_venv_312.bat to create it with Python 3.12.
     pause
     exit /b 1
 )

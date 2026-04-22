@@ -12,12 +12,17 @@ Telegram бот для работы с документами по охране 
 ## Установка
 
 1. Клонируйте репозиторий
-2. Установите зависимости:
+2. Создайте виртуальное окружение на Python 3.12:
 ```bash
-pip install -r requirements.txt
+py -3.12 -m venv venv
 ```
 
-3. Создайте файл `.env` на основе `.env.example` и заполните его:
+3. Установите зависимости:
+```bash
+venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+4. Создайте файл `.env` на основе `.env.example` и заполните его:
 ```env
 BOT_TOKEN=your_telegram_bot_token_here
 ADMIN_ID=your_telegram_admin_id_here
@@ -135,8 +140,10 @@ data/documents/
 ## Запуск
 
 ```bash
-python main.py
+venv\Scripts\python.exe main.py
 ```
+
+Если у вас уже был `venv`, созданный на Python 3.14, запустите `recreate_venv_312.bat` для пересоздания окружения под Python 3.12.
 
 ## Доступ к документам
 
