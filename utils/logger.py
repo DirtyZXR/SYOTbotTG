@@ -1,7 +1,15 @@
 import logging
 import sys
+import os
 from pathlib import Path
 from logging.handlers import RotatingFileHandler
+
+
+def _get_base_dir() -> Path:
+    """Определяет базовую директорию: рядом с EXE или со скриптом."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).parent
+    return Path(__file__).resolve().parent.parent
 
 
 def setup_logger(name: str = "SYOTbot", level: int = logging.INFO) -> logging.Logger:
@@ -17,13 +25,13 @@ def setup_logger(name: str = "SYOTbot", level: int = logging.INFO) -> logging.Lo
 
     # Создаем форматтер
     formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
 
     # Создаем папку для логов
-    log_dir = Path("logs")
-    log_dir.mkdir(exist_ok=True)
+    log_dir = _get_base_dir() / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
 
     # Консольный хендлер
     console_handler = logging.StreamHandler(sys.stdout)

@@ -1,9 +1,19 @@
 import json
 import random
+import sys
 from pathlib import Path
 from typing import List, Dict, Optional
 
-TESTS_FILE = Path("data/tests/test.json")
+
+def _get_base_dir() -> Path:
+    """Определяет базовую директорию: рядом с EXE или со скриптом."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).parent
+    return Path(__file__).resolve().parent.parent
+
+
+BASE_DIR = _get_base_dir()
+TESTS_FILE = BASE_DIR / "data" / "tests" / "test.json"
 QUESTIONS_PER_TEST = 15
 GROUP3_UNLOCK_DAYS = 90  # 3 месяца
 
