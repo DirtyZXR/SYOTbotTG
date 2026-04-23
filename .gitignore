@@ -72,7 +72,6 @@ docs/LOGGING.md
 migrate_*.py
 
 # PyInstaller spec files
-*.spec
 
 # Test data and converters
 data/tests/
