@@ -34,11 +34,11 @@ def setup_logger(name: str = "SYOTbot", level: int = logging.INFO) -> logging.Lo
     log_dir.mkdir(parents=True, exist_ok=True)
 
     # Консольный хендлер
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(level)
-    console_handler.setFormatter(formatter)
-
-    logger.addHandler(console_handler)
+    if sys.stdout is not None:
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setLevel(level)
+        console_handler.setFormatter(formatter)
+        logger.addHandler(console_handler)
 
     # Лог-файл не должен блокировать запуск приложения.
     try:

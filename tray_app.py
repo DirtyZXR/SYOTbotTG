@@ -22,13 +22,14 @@ log_dir = BASE_DIR / "logs"
 log_dir.mkdir(parents=True, exist_ok=True)
 
 # Настройка логирования
+log_handlers = [logging.FileHandler(log_dir / "bot.log", encoding="utf-8")]
+if sys.stdout is not None:
+    log_handlers.append(logging.StreamHandler(sys.stdout))
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.FileHandler(log_dir / "bot.log", encoding="utf-8"),
-        logging.StreamHandler(sys.stdout),
-    ],
+    handlers=log_handlers,
 )
 logger = logging.getLogger(__name__)
 
