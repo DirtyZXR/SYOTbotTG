@@ -614,7 +614,11 @@ async def callback_test_answer(callback: CallbackQuery, state: FSMContext):
         await show_question(callback, state)
         await callback.answer(f"Ответ на вопрос {current_index + 1} принят.")
     else:
-        # Тест завершен
+        # Тест завершен — сразу удаляем сообщение с кнопками и очищаем state,
+        # чтобы предотвратить повторные нажатия и race condition.
+        await callback.message.delete()
+        await state.clear()
+
         from core.test_service import calculate_results
         from database import SessionLocal, UserRepository, TestResultRepository
         from datetime import datetime
@@ -679,10 +683,9 @@ async def callback_test_answer(callback: CallbackQuery, state: FSMContext):
             format_results_details_chunk,
         )
 
-        # 1. Отредактировать исходное сообщение, показав только шапку
-        await callback.message.delete()
-        await callback.message.answer(
-            format_results_header(results, user.full_name, data["test_group"]),
+        await bot.send_message(
+            chat_id=callback.from_user.id,
+            text=format_results_header(results, user.full_name, data["test_group"]),
             parse_mode=ParseMode.HTML,
             reply_markup=get_test_groups_keyboard(user),
         )
@@ -714,7 +717,6 @@ async def callback_test_answer(callback: CallbackQuery, state: FSMContext):
                 parse_mode=ParseMode.HTML,
             )
 
-        await state.clear()
         await callback.answer("Тест завершен!")
 
 
