@@ -2,7 +2,6 @@ from datetime import datetime, timedelta
 
 from models.test_result import TestResult
 from models.user import User
-from config import settings
 
 ACCESS_PERIOD_DAYS = 358
 
@@ -62,28 +61,4 @@ class NotificationService:
                 f"📌 {status}\n\n"
             )
 
-        return message
-
-    @staticmethod
-    def format_group3_expiration_notification(users: list[User]) -> str:
-        """
-        Форматирование уведомления для админа об истечении 3 группы у пользователей.
-        """
-        if not users:
-            return ""  # Возвращаем пустую строку, если список пуст
-
-        user_lines = []
-        for user in users:
-            user_info = (
-                f"👤 {user.full_name or 'Не указано'}\n"
-                f"📧 {user.email}\n"
-                f"📱 @{user.username or 'Нет username'}"
-            )
-            user_lines.append(user_info)
-
-        message = (
-            "🔔 Уведомление об истечении 3-й группы\n\n"
-            "У следующих пользователей сегодня истекает срок действия 3-й группы (прошло 358 дней):\n\n"
-            + "\n\n".join(user_lines)
-        )
         return message

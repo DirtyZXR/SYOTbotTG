@@ -1,6 +1,5 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from pathlib import Path
 from config import settings
 from database.base import Base
 
@@ -19,7 +18,6 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def init_db():
     """Инициализация базы данных"""
-    from models import User, Document, Test, TestResult
 
     # Создаём таблицы
     Base.metadata.create_all(bind=engine)
