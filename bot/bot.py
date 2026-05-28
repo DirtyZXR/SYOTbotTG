@@ -462,30 +462,26 @@ async def _get_welcome_message(user_id: int) -> str:
         "✅ Информировать о предстоящих событиях\n"
     )
 
-    if user and getattr(user, "group5_passed_at", None):
-        expiry_date = user.group5_passed_at + timedelta(days=365)
+    if user and user.access_granted_at:
+        expiry_date = user.access_granted_at + timedelta(days=358)
         days_left = (expiry_date.date() - datetime.now().date()).days
-        if days_left > 0:
-            return (
-                f"✅ V группа до и выше 1000В сдана, осталось {days_left} дн.\n\n"
-                f"{base_message}"
-            )
-    elif user and getattr(user, "group4_passed_at", None):
-        expiry_date = user.group4_passed_at + timedelta(days=365)
-        days_left = (expiry_date.date() - datetime.now().date()).days
-        if days_left > 0:
-            return (
-                f"✅ IV группа до и выше 1000В сдана, осталось {days_left} дн.\n\n"
-                f"{base_message}"
-            )
-    elif user and user.group3_passed_at:
-        expiry_date = user.group3_passed_at + timedelta(days=365)
-        days_left = (expiry_date.date() - datetime.now().date()).days
-        if days_left > 0:
-            return (
-                f"✅ III группа до 1000В сдана, осталось {days_left} дн.\n\n"
-                f"{base_message}"
-            )
+        
+        # Определяем максимальную группу для отображения
+        max_group = ""
+        if getattr(user, "group5_passed_at", None):
+            max_group = "V группа до и выше 1000В сдана"
+        elif getattr(user, "group4_passed_at", None):
+            max_group = "IV группа до и выше 1000В сдана"
+        elif user.group3_passed_at:
+            max_group = "III группа до 1000В сдана"
+        elif user.group2_passed_at:
+            max_group = "II группа до 1000В сдана"
+            
+        if days_left > 0 and max_group:
+            return f"✅ {max_group}, осталось {days_left} дн.\n\n{base_message}"
+        elif days_left > 0:
+            return f"✅ Допуск активен, осталось {days_left} дн.\n\n{base_message}"
+            
     return base_message
 
 
@@ -637,10 +633,21 @@ async def callback_test_answer(callback: CallbackQuery, state: FSMContext):
 
             if results["passed"]:
                 user_repo = UserRepository(db)
+                update_data = {
+                    "access_granted_at": datetime.now(),
+                    "notified_7d": False,
+                    "notified_1d": False
+                }
                 if data["test_group"] == 2:
-                    user_repo.update_user(user, {"group2_passed_at": datetime.now()})
+                    update_data["group2_passed_at"] = datetime.now()
                 elif data["test_group"] == 3:
-                    user_repo.update_user(user, {"group3_passed_at": datetime.now()})
+                    update_data["group3_passed_at"] = datetime.now()
+                elif data["test_group"] == 4:
+                    update_data["group4_passed_at"] = datetime.now()
+                elif data["test_group"] == 5:
+                    update_data["group5_passed_at"] = datetime.now()
+                    
+                user_repo.update_user(user, update_data)
 
                 # Отправляем уведомление админам в случае успеха
                 admin_ids = user_repo.get_admin_ids()
@@ -1056,38 +1063,42 @@ async def process_menu_profile(message: Message, state: FSMContext):
         from core.test_service import get_group3_unlock_date
 
         msg += "\n<b>📊 Статус тестирования:</b>\n"
-        if getattr(user, "group5_passed_at", None):
-            expiry_date = user.group5_passed_at + timedelta(days=365)
+        
+        days_left = 0
+        if user.access_granted_at:
+            expiry_date = user.access_granted_at + timedelta(days=358)
             days_left = (expiry_date.date() - datetime.now().date()).days
+
+        if getattr(user, "group5_passed_at", None):
             if days_left > 0:
                 msg += f"✅ V группа до и выше 1000В (действует еще {days_left} дн.)\n"
             else:
                 msg += "❌ V группа до и выше 1000В (срок действия истек)\n"
         elif getattr(user, "group4_passed_at", None):
-            expiry_date = user.group4_passed_at + timedelta(days=365)
-            days_left = (expiry_date.date() - datetime.now().date()).days
             if days_left > 0:
                 msg += f"✅ IV группа до и выше 1000В (действует еще {days_left} дн.)\n"
             else:
                 msg += "❌ IV группа до и выше 1000В (срок действия истек)\n"
         elif user.group3_passed_at:
-            expiry_date = user.group3_passed_at + timedelta(days=365)
-            days_left = (expiry_date.date() - datetime.now().date()).days
             if days_left > 0:
                 msg += f"✅ III группа до 1000В (действует еще {days_left} дн.)\n"
             else:
                 msg += "❌ III группа до 1000В (срок действия истек)\n"
         elif user.group2_passed_at:
             unlock = get_group3_unlock_date(user)
-            days_left = (
+            unlock_days_left = (
                 (unlock.date() - datetime.now().date()).days
                 if unlock and unlock.date() > datetime.now().date()
                 else 0
             )
             if days_left > 0:
-                msg += f"✅ II группа до 1000В\n⏳ III группа откроется через {days_left} дн.\n"
+                msg += f"✅ II группа до 1000В (действует еще {days_left} дн.)\n"
             else:
-                msg += "✅ II группа до 1000В\n⏳ Доступна сдача III группы\n"
+                msg += "❌ II группа до 1000В (срок действия истек)\n"
+            if unlock_days_left > 0:
+                msg += f"⏳ III группа откроется через {unlock_days_left} дн.\n"
+            elif days_left > 0:
+                msg += "⏳ Доступна сдача III группы\n"
         else:
             msg += "❌ Нет сданных тестов\n"
 
