@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import or_, func
+from sqlalchemy import or_
 from models.user import User
 from typing import Optional, List, Sequence
 from datetime import datetime, timedelta

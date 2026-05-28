@@ -2,7 +2,6 @@ from datetime import datetime, timedelta
 
 from models.test_result import TestResult
 from models.user import User
-from config import settings
 
 ACCESS_PERIOD_DAYS = 358
 

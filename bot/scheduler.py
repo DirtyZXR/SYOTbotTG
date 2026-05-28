@@ -2,7 +2,6 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from core.notification_service import NotificationService
 from database import SessionLocal
 from database.user_repo import UserRepository
 from utils import logger
@@ -51,7 +50,7 @@ async def _run_daily_checks(bot):
                     f"{user.full_name}, срок действия вашего удостоверения по электробезопасности истекает через 7 дней. "
                     f"Обратитесь к администратору для продления.",
                 )
-                
+
                 keyboard = InlineKeyboardMarkup(
                     inline_keyboard=[
                         [
@@ -62,7 +61,7 @@ async def _run_daily_checks(bot):
                         ]
                     ]
                 )
-                
+
                 for admin_id in admin_ids:
                     try:
                         await bot.send_message(
@@ -72,7 +71,7 @@ async def _run_daily_checks(bot):
                         )
                     except Exception as e:
                         logger.warning(f"Failed to notify admin {admin_id}: {e}")
-                        
+
                 user_repo.mark_notified(user, "notified_7d")
             except Exception as e:
                 logger.warning(f"Failed to notify {user.telegram_id}: {e}")
@@ -86,7 +85,7 @@ async def _run_daily_checks(bot):
                     f"{user.full_name}, срок действия вашего удостоверения по электробезопасности истекает завтра! "
                     f"Срочно обратитесь к администратору.",
                 )
-                
+
                 keyboard = InlineKeyboardMarkup(
                     inline_keyboard=[
                         [
@@ -97,7 +96,7 @@ async def _run_daily_checks(bot):
                         ]
                     ]
                 )
-                
+
                 for admin_id in admin_ids:
                     try:
                         await bot.send_message(

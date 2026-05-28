@@ -5,24 +5,24 @@ Revises: 0625cfd877dd
 Create Date: 2026-05-28 15:43:06.858737
 
 """
+
 from typing import Sequence, Union
 
 from alembic import op
-import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '082572b9279e'
-down_revision: Union[str, Sequence[str], None] = '0625cfd877dd'
+revision: str = "082572b9279e"
+down_revision: Union[str, Sequence[str], None] = "0625cfd877dd"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
     """Upgrade schema."""
-    # Data migration: Unify document expiration by setting access_granted_at 
+    # Data migration: Unify document expiration by setting access_granted_at
     # to the maximum of all passed_at dates and access_granted_at itself.
-    # Additionally, reset all expiration notification flags to ensure users 
+    # Additionally, reset all expiration notification flags to ensure users
     # and admins receive notifications correctly based on the new unified date.
     op.execute("""
         UPDATE users 

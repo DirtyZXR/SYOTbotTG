@@ -2,7 +2,6 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from typing import List, Optional
 from config import DOCUMENT_CATEGORIES, settings
-from core import AuthService
 
 
 def get_categories_keyboard() -> InlineKeyboardMarkup:
@@ -295,7 +294,6 @@ def get_access_date_keyboard(user_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-from typing import Optional
 
 
 def get_admin_company_keyboard(

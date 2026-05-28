@@ -17,8 +17,8 @@ def setup_logger(name: str = "SYOTbot", level: int = logging.INFO) -> logging.Lo
 
     # Создаем форматтер
     formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
 
     # Создаем папку для логов

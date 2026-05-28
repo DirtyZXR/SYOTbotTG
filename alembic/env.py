@@ -16,7 +16,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import settings
 from database.base import Base
-import models
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.

@@ -36,9 +36,7 @@ class DocumentRepository:
         """Получение документов по категории"""
         return self.db.query(Document).filter(Document.category == category).all()
 
-    def get_by_subcategory(
-        self, category: str, subcategory: str
-    ) -> List[Document]:
+    def get_by_subcategory(self, category: str, subcategory: str) -> List[Document]:
         """Получение документов по подкатегории"""
         return (
             self.db.query(Document)

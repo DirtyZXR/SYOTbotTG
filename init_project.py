@@ -26,7 +26,9 @@ def init_project():
     print("🚀 Инициализация проекта SYOTbotTG\n")
 
     python_cmd = (
-        f"py -{PYTHON_VERSION}" if sys.platform == "win32" else f"python{PYTHON_VERSION}"
+        f"py -{PYTHON_VERSION}"
+        if sys.platform == "win32"
+        else f"python{PYTHON_VERSION}"
     )
 
     # 1. Создание виртуального окружения

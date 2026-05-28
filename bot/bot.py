@@ -5,16 +5,13 @@ from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import default_state
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import Message, CallbackQuery, FSInputFile
 from pathlib import Path
 from config import settings
 from core import (
     AuthService,
-    DocumentService,
     NotificationService,
-    SettingsService,
 )
 from bot.keyboards import (
     get_test_groups_keyboard,
@@ -22,7 +19,6 @@ from bot.keyboards import (
     get_main_menu_keyboard,
     get_cancel_keyboard,
     get_folder_keyboard,
-    get_back_to_menu_button,
     get_admin_menu_keyboard,
     get_admin_approval_keyboard,
     get_cancel_operation_keyboard,
@@ -33,7 +29,6 @@ from bot.keyboards import (
     get_access_date_keyboard,
     get_profile_keyboard,
     get_company_selection_keyboard,
-    get_test_cancel_keyboard,
     get_admin_test_notification_keyboard,
     get_admin_company_keyboard,
 )
@@ -465,7 +460,7 @@ async def _get_welcome_message(user_id: int) -> str:
     if user and user.access_granted_at:
         expiry_date = user.access_granted_at + timedelta(days=358)
         days_left = (expiry_date.date() - datetime.now().date()).days
-        
+
         # Определяем максимальную группу для отображения
         max_group = ""
         if getattr(user, "group5_passed_at", None):
@@ -476,12 +471,12 @@ async def _get_welcome_message(user_id: int) -> str:
             max_group = "III группа до 1000В сдана"
         elif user.group2_passed_at:
             max_group = "II группа до 1000В сдана"
-            
+
         if days_left > 0 and max_group:
             return f"✅ {max_group}, осталось {days_left} дн.\n\n{base_message}"
         elif days_left > 0:
             return f"✅ Допуск активен, осталось {days_left} дн.\n\n{base_message}"
-            
+
     return base_message
 
 
@@ -636,7 +631,8 @@ async def callback_test_answer(callback: CallbackQuery, state: FSMContext):
                 update_data = {
                     "access_granted_at": datetime.now(),
                     "notified_7d": False,
-                    "notified_1d": False
+                    "notified_1d": False,
+                    "is_verified": True
                 }
                 if data["test_group"] == 2:
                     update_data["group2_passed_at"] = datetime.now()
@@ -646,7 +642,7 @@ async def callback_test_answer(callback: CallbackQuery, state: FSMContext):
                     update_data["group4_passed_at"] = datetime.now()
                 elif data["test_group"] == 5:
                     update_data["group5_passed_at"] = datetime.now()
-                    
+
                 user_repo.update_user(user, update_data)
 
                 # Отправляем уведомление админам в случае успеха
@@ -1063,7 +1059,7 @@ async def process_menu_profile(message: Message, state: FSMContext):
         from core.test_service import get_group3_unlock_date
 
         msg += "\n<b>📊 Статус тестирования:</b>\n"
-        
+
         days_left = 0
         if user.access_granted_at:
             expiry_date = user.access_granted_at + timedelta(days=358)

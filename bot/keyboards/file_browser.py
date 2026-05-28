@@ -1,7 +1,4 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from pathlib import Path
-from typing import List
-from config import settings
 
 
 def get_folder_keyboard(
