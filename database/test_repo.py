@@ -9,9 +9,7 @@ class TestRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def create_test(
-        self, name: str, group: int, questions: dict
-    ) -> Test:
+    def create_test(self, name: str, group: int, questions: dict) -> Test:
         """Создание теста"""
         test = Test(
             name=name,

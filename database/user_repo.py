@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import or_, func
+from sqlalchemy import or_
 from models.user import User
 from typing import Optional, List, Sequence
 from datetime import datetime, timedelta
@@ -300,95 +300,6 @@ class UserRepository:
                 User.group3_passed_at == None,  # Ещё не сдал 3
                 User.access_granted_at <= threshold - timedelta(days=90),
                 User.access_granted_at > now - timedelta(days=90),
-                getattr(User, notified_field) == False,
-            )
-            .all()
-        )
-        return [u for u in users if u.companies != ["consulting"]]
-
-    def get_users_with_expired_group3(self) -> List[User]:
-        """Пользователи, у которых истекает 3 группа (прошло 358 дней)"""
-        now = datetime.now()
-        # Ищем тех, кто сдал тест ровно 358 дней назад
-        check_date = now.date() - timedelta(days=358)
-
-        users = (
-            self.db.query(User)
-            .filter(
-                User.is_admin == False,
-                User.group3_passed_at != None,
-                func.date(User.group3_passed_at) == check_date,
-            )
-            .all()
-        )
-        return [u for u in users if u.companies != ["consulting"]]
-
-    def get_users_for_group3_expiration_warning(
-        self, session: "AsyncSession", days: int
-    ) -> Sequence[User]:
-        """Пользователи, у которых истекает 3 группа через N дней (ещё не уведомлены)"""
-        now = datetime.now()
-        threshold = now + timedelta(days=days)
-        notified_field = "notified_3g_exp_7d" if days == 7 else "notified_3g_exp_1d"
-
-        # Fallback for compatibility if session is not provided or lacks .query()
-        db_session = session if hasattr(session, "query") else self.db
-
-        users = (
-            db_session.query(User)
-            .filter(
-                User.is_admin == False,
-                User.group3_passed_at != None,
-                User.group3_passed_at <= threshold - timedelta(days=358),
-                User.group3_passed_at > now - timedelta(days=358),
-                getattr(User, notified_field) == False,
-            )
-            .all()
-        )
-        return [u for u in users if u.companies != ["consulting"]]
-
-    def get_users_for_group4_expiration_warning(
-        self, session: "AsyncSession", days: int
-    ) -> Sequence[User]:
-        """Пользователи, у которых истекает 4 группа через N дней (ещё не уведомлены)"""
-        now = datetime.now()
-        threshold = now + timedelta(days=days)
-        notified_field = "notified_4g_exp_7d" if days == 7 else "notified_4g_exp_1d"
-
-        # Fallback for compatibility if session is not provided or lacks .query()
-        db_session = session if hasattr(session, "query") else self.db
-
-        users = (
-            db_session.query(User)
-            .filter(
-                User.is_admin == False,
-                User.group4_passed_at != None,
-                User.group4_passed_at <= threshold - timedelta(days=358),
-                User.group4_passed_at > now - timedelta(days=358),
-                getattr(User, notified_field) == False,
-            )
-            .all()
-        )
-        return [u for u in users if u.companies != ["consulting"]]
-
-    def get_users_for_group5_expiration_warning(
-        self, session: "AsyncSession", days: int
-    ) -> Sequence[User]:
-        """Пользователи, у которых истекает 5 группа через N дней (ещё не уведомлены)"""
-        now = datetime.now()
-        threshold = now + timedelta(days=days)
-        notified_field = "notified_5g_exp_7d" if days == 7 else "notified_5g_exp_1d"
-
-        # Fallback for compatibility if session is not provided or lacks .query()
-        db_session = session if hasattr(session, "query") else self.db
-
-        users = (
-            db_session.query(User)
-            .filter(
-                User.is_admin == False,
-                User.group5_passed_at != None,
-                User.group5_passed_at <= threshold - timedelta(days=358),
-                User.group5_passed_at > now - timedelta(days=358),
                 getattr(User, notified_field) == False,
             )
             .all()

@@ -22,9 +22,7 @@ class DocumentService:
         return documents
 
     @staticmethod
-    def get_documents_by_subcategory(
-        category: str, subcategory: str
-    ) -> List[Document]:
+    def get_documents_by_subcategory(category: str, subcategory: str) -> List[Document]:
         """Получение документов по подкатегории"""
         db = SessionLocal()
         doc_repo = DocumentRepository(db)
@@ -75,9 +73,7 @@ class DocumentService:
             if "subcategories" in category_data:
                 if isinstance(category_data["subcategories"], dict):
                     # Вложенные подкатегории (электробезопасность)
-                    for sub_key, sub_data in category_data[
-                        "subcategories"
-                    ].items():
+                    for sub_key, sub_data in category_data["subcategories"].items():
                         sub_path = category_path / sub_key
                         if sub_path.exists():
                             added_count += DocumentService._add_files_from_path(

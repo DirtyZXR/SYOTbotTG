@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from datetime import datetime, date
+from datetime import date
 from typing import List, Tuple
 from models.document_download import DocumentDownload
 from models.user import User
