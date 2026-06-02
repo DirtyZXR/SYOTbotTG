@@ -36,6 +36,8 @@ from bot.keyboards.inline import (
     get_admin_select_group_keyboard,
     get_admin_revoke_select_group_keyboard,
     get_paginated_users_keyboard,
+    get_manage_supervisors_keyboard,
+    get_expiry_report_keyboard,
 )
 from bot.states import (
     RegistrationForm,
@@ -981,6 +983,117 @@ async def process_menu_stats(message: Message, state: FSMContext):
     await message.answer(
         msg.strip(), parse_mode=ParseMode.HTML, reply_markup=reply_markup
     )
+
+
+def _build_expiry_report(users: list, page: int, limit: int) -> tuple[str, int]:
+    """Строит текст отчёта по срокам удостоверений для одной страницы. Возвращает (text, total_pages)."""
+    from datetime import datetime, timedelta
+    import math
+
+    ACCESS_PERIOD_DAYS = 358
+    total_pages = max(1, math.ceil(len(users) / limit))
+    start = (page - 1) * limit
+    end = start + limit
+    page_users = users[start:end]
+
+    msg = f"📋 <b>Сроки удостоверений</b> (стр. {page}/{total_pages})\n\n"
+
+    if not page_users:
+        msg += "Нет сотрудников с выданными документами."
+        return msg, total_pages
+
+    for user in page_users:
+        name = user.full_name or user.email
+        if user.access_granted_at:
+            expiry_date = user.access_granted_at + timedelta(days=ACCESS_PERIOD_DAYS)
+            days_left = (expiry_date.date() - datetime.now().date()).days
+
+            group_label = ""
+            if getattr(user, "group5_passed_at", None):
+                group_label = "V "
+            elif getattr(user, "group4_passed_at", None):
+                group_label = "IV "
+            elif user.group3_passed_at:
+                group_label = "III "
+            elif user.group2_passed_at:
+                group_label = "II "
+
+            if days_left > 0:
+                msg += f"👤 {name} — {group_label}до {expiry_date.strftime('%d.%m.%Y')} ({days_left} дн.)\n"
+            else:
+                msg += f"👤 {name} — ❌ истёк {expiry_date.strftime('%d.%m.%Y')}\n"
+        else:
+            msg += f"👤 {name} — ⏳ документ не выдан\n"
+
+    return msg, total_pages
+
+
+@dp.message(F.text == "📋 Сроки удостоверений")
+async def process_menu_expiry_report(message: Message, state: FSMContext):
+    await state.clear()
+    user = AuthService.get_user(message.from_user.id)
+    if not user or (not user.is_admin and not user.is_supervisor):
+        await message.answer("❌ Нет доступа")
+        return
+
+    from database import SessionLocal, UserRepository
+
+    db = SessionLocal()
+    try:
+        user_repo = UserRepository(db)
+        users = user_repo.get_active_users_for_report()
+    finally:
+        db.close()
+
+    page = 1
+    limit = 15
+    msg, total_pages = _build_expiry_report(users, page, limit)
+
+    await message.answer(
+        msg,
+        parse_mode=ParseMode.HTML,
+        reply_markup=get_expiry_report_keyboard(
+            current_page=page, total_pages=total_pages, is_admin=user.is_admin
+        ),
+    )
+
+
+@dp.callback_query(lambda c: c.data.startswith("expiry_report_"))
+async def callback_expiry_report_page(callback: CallbackQuery):
+    """Пагинация отчёта по срокам удостоверений"""
+    user = AuthService.get_user(callback.from_user.id)
+    if not user or (not user.is_admin and not user.is_supervisor):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+
+    try:
+        page = int(callback.data.split("_")[-1])
+    except ValueError:
+        page = 1
+
+    from database import SessionLocal, UserRepository
+
+    db = SessionLocal()
+    try:
+        user_repo = UserRepository(db)
+        users = user_repo.get_active_users_for_report()
+    finally:
+        db.close()
+
+    limit = 15
+    msg, total_pages = _build_expiry_report(users, page, limit)
+
+    try:
+        await callback.message.edit_text(
+            msg,
+            parse_mode=ParseMode.HTML,
+            reply_markup=get_expiry_report_keyboard(
+                current_page=page, total_pages=total_pages, is_admin=user.is_admin
+            ),
+        )
+    except Exception:
+        pass
+    await callback.answer()
 
 
 @dp.message(F.text == "🏆 Рейтинг")
@@ -2403,6 +2516,75 @@ async def callback_menu_stub(callback: CallbackQuery, state: FSMContext):
 @dp.callback_query(lambda c: c.data == "back_to_menu")
 async def callback_back_to_menu(callback: CallbackQuery, state: FSMContext):
     await go_back_to_main_menu(callback, state)
+
+
+# ==================== Supervisor Management ====================
+
+
+@dp.callback_query(lambda c: c.data == "admin_manage_supervisors")
+async def callback_admin_manage_supervisors(callback: CallbackQuery):
+    """Управление руководителями"""
+    if not AuthService.is_admin(callback.from_user.id):
+        await callback.answer("❌ У вас нет прав администратора", show_alert=True)
+        return
+
+    from database import UserRepository, SessionLocal
+
+    db = SessionLocal()
+    user_repo = UserRepository(db)
+    users = user_repo.get_non_admin_users()
+    db.close()
+
+    await callback.message.edit_text(
+        "👔 <b>Управление руководителями</b>\n\n"
+        "Нажмите на пользователя, чтобы добавить или убрать права руководителя.\n\n"
+        "👔 — Руководитель (может просматривать сроки удостоверений)\n"
+        "👤 — Обычный пользователь",
+        parse_mode=ParseMode.HTML,
+        reply_markup=get_manage_supervisors_keyboard(users),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(
+    lambda c: c.data.startswith("add_supervisor_") or c.data.startswith("remove_supervisor_")
+)
+async def callback_toggle_supervisor(callback: CallbackQuery):
+    """Добавить/убрать права руководителя"""
+    if not AuthService.is_admin(callback.from_user.id):
+        await callback.answer("❌ У вас нет прав администратора", show_alert=True)
+        return
+
+    action = callback.data.split("_")[0]
+    user_id = int(callback.data.split("_")[-1])
+
+    from database import UserRepository, SessionLocal
+
+    db = SessionLocal()
+    user_repo = UserRepository(db)
+    user = user_repo.get_by_id(user_id)
+
+    if not user:
+        db.close()
+        await callback.answer("❌ Пользователь не найден", show_alert=True)
+        return
+
+    if user.is_admin:
+        db.close()
+        await callback.answer("❌ Нельзя изменить права администратора", show_alert=True)
+        return
+
+    is_supervisor = action == "add"
+    user_repo.set_supervisor(user, is_supervisor)
+    users = user_repo.get_non_admin_users()
+    db.close()
+
+    await callback.message.edit_reply_markup(
+        reply_markup=get_manage_supervisors_keyboard(users)
+    )
+    await callback.answer(
+        f"✅ Права руководителя {'выданы' if is_supervisor else 'сняты'}"
+    )
 
 
 # ==================== Main Function ====================

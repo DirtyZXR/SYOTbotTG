@@ -21,3 +21,13 @@ def init_db():
 
     # Создаём таблицы
     Base.metadata.create_all(bind=engine)
+
+    # Синхронизируем alembic_version с текущим состоянием моделей
+    from alembic.config import Config as AlembicConfig
+    from alembic import command
+
+    alembic_cfg = AlembicConfig("alembic.ini")
+    try:
+        command.stamp(alembic_cfg, "head")
+    except Exception:
+        pass

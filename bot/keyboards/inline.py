@@ -145,11 +145,12 @@ def get_admin_menu_keyboard() -> InlineKeyboardMarkup:
                 text="🔍 Поиск пользователей", callback_data="admin_search_users"
             )
         ],
-        # [
-        #     InlineKeyboardButton(
-        #         text="👨‍💼 Управление админами", callback_data="admin_manage_admins"
-        #     )
-        # ],
+        [
+            InlineKeyboardButton(
+                text="👔 Управление руководителями",
+                callback_data="admin_manage_supervisors",
+            )
+        ],
         [InlineKeyboardButton(text="🔙 В главное меню", callback_data="back_to_menu")],
     ]
 
@@ -533,6 +534,64 @@ def get_download_leaderboard_keyboard(
     builder.row(left_button, middle_button, right_button)
     builder.row(
         InlineKeyboardButton(text="🔙 Назад", callback_data="admin_download_stats_back")
+    )
+
+    return builder.as_markup()
+
+
+def get_manage_supervisors_keyboard(users) -> InlineKeyboardMarkup:
+    """Клавиатура для управления руководителями"""
+    buttons = []
+
+    for user in users:
+        status = "👔" if user.is_supervisor else "👤"
+        action = "remove_supervisor" if user.is_supervisor else "add_supervisor"
+        button_text = f"{status} {user.full_name or user.email}"
+
+        buttons.append(
+            [
+                InlineKeyboardButton(
+                    text=button_text, callback_data=f"{action}_{user.id}"
+                )
+            ]
+        )
+
+    buttons.append(
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_admin_menu")]
+    )
+
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_expiry_report_keyboard(
+    current_page: int, total_pages: int, is_admin: bool = False
+) -> InlineKeyboardMarkup:
+    """Клавиатура с пагинацией для отчёта по срокам удостоверений"""
+    builder = InlineKeyboardBuilder()
+
+    left_button = (
+        InlineKeyboardButton(
+            text="⬅️", callback_data=f"expiry_report_{current_page - 1}"
+        )
+        if current_page > 1
+        else InlineKeyboardButton(text="⏹", callback_data="noop")
+    )
+
+    middle_button = InlineKeyboardButton(
+        text=f"{current_page}/{total_pages}", callback_data="noop"
+    )
+
+    right_button = (
+        InlineKeyboardButton(
+            text="➡️", callback_data=f"expiry_report_{current_page + 1}"
+        )
+        if current_page < total_pages
+        else InlineKeyboardButton(text="⏹", callback_data="noop")
+    )
+
+    builder.row(left_button, middle_button, right_button)
+    builder.row(
+        InlineKeyboardButton(text="🔙 В главное меню", callback_data="back_to_menu")
     )
 
     return builder.as_markup()
