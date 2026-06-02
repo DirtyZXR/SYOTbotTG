@@ -71,6 +71,33 @@ class UserRepository:
             .all()
         )
 
+    def get_non_admin_users(self) -> List[User]:
+        """Получение всех пользователей, кроме админов (для управления руководителями)"""
+        return (
+            self.db.query(User)
+            .filter(User.is_admin == False, User.is_pending == False)
+            .order_by(User.full_name_lower)
+            .all()
+        )
+
+    def get_active_users_for_report(self) -> List[User]:
+        """Получение всех активных пользователей (не админов, не ожидающих) для отчёта по срокам"""
+        return (
+            self.db.query(User)
+            .filter(User.is_admin == False, User.is_pending == False)
+            .order_by(User.full_name_lower)
+            .all()
+        )
+
+    def get_supervisor_ids(self) -> List[int]:
+        """Получение telegram_id всех руководителей"""
+        return [
+            row[0]
+            for row in self.db.query(User.telegram_id)
+            .filter(User.is_supervisor == True)
+            .all()
+        ]
+
     def get_admin_ids(self) -> List[int]:
         """Получение telegram_id всех администраторов"""
         return [
@@ -192,6 +219,13 @@ class UserRepository:
     def set_admin(self, user: User, is_admin: bool = True) -> User:
         """Назначение/снятие прав администратора"""
         user.is_admin = is_admin
+        self.db.commit()
+        self.db.refresh(user)
+        return user
+
+    def set_supervisor(self, user: User, is_supervisor: bool = True) -> User:
+        """Назначение/снятие прав руководителя"""
+        user.is_supervisor = is_supervisor
         self.db.commit()
         self.db.refresh(user)
         return user
