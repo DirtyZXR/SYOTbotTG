@@ -119,3 +119,13 @@ class AuthService:
         is_admin = user_repo.is_admin(telegram_id)
         db.close()
         return is_admin
+
+    @staticmethod
+    def is_supervisor(telegram_id: int) -> bool:
+        """Check if user is supervisor"""
+        db = SessionLocal()
+        user_repo = UserRepository(db)
+
+        user = user_repo.get_by_telegram_id(telegram_id)
+        db.close()
+        return bool(user and user.is_supervisor)

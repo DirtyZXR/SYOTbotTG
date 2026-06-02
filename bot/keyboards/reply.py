@@ -8,6 +8,7 @@ def get_main_menu_keyboard(user_id: Optional[int] = None) -> ReplyKeyboardMarkup
     """Главное меню (Reply)"""
     is_intellectika = False
     is_admin = False
+    is_supervisor = False
 
     if user_id:
         user = AuthService.get_user(user_id)
@@ -16,6 +17,8 @@ def get_main_menu_keyboard(user_id: Optional[int] = None) -> ReplyKeyboardMarkup
                 is_intellectika = True
             if user.is_admin:
                 is_admin = True
+            if user.is_supervisor:
+                is_supervisor = True
 
     # Строим ряды кнопок
     keyboard = []
@@ -34,7 +37,11 @@ def get_main_menu_keyboard(user_id: Optional[int] = None) -> ReplyKeyboardMarkup
     # 3 ряд - Профиль (доступны всем)
     keyboard.append([KeyboardButton(text="✏️ Мои данные")])
 
-    # 4 и 5 ряд - Админ-панель и Статистика (только для админов)
+    # Ряд для руководителя: кнопка сроков удостоверений (админы тоже видят)
+    if is_supervisor or is_admin:
+        keyboard.append([KeyboardButton(text="📋 Сроки удостоверений")])
+
+    # Админ-панель и Статистика (только для админов)
     if is_admin:
         keyboard.append(
             [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="🏆 Рейтинг")]

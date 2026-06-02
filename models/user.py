@@ -19,6 +19,7 @@ class User(Base):
     is_pending = Column(Boolean, default=True)  # Ожидает подтверждения админом
     is_verified = Column(Boolean, default=False)  # Документ выдан (допуск активен)
     is_admin = Column(Boolean, default=False)  # Администратор системы
+    is_supervisor = Column(Boolean, default=False)  # Руководитель (просмотр сроков удостоверений)
     notified_7d = Column(Boolean, default=False)  # Уведомление за 7 дней отправлено
     notified_1d = Column(Boolean, default=False)  # Уведомление за 1 день отправлено
     companies = Column(JSON, default=list)  # Список компаний пользователя
