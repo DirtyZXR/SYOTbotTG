@@ -81,10 +81,14 @@ class UserRepository:
         )
 
     def get_active_users_for_report(self) -> List[User]:
-        """Получение всех активных пользователей (не админов, не ожидающих) для отчёта по срокам"""
+        """Получение пользователей с выданным удостоверением (не админов, не ожидающих) для отчёта по срокам"""
         return (
             self.db.query(User)
-            .filter(User.is_admin == False, User.is_pending == False)
+            .filter(
+                User.is_admin == False,
+                User.is_pending == False,
+                User.access_granted_at != None,
+            )
             .order_by(User.full_name_lower)
             .all()
         )
