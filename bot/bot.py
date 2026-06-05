@@ -1004,26 +1004,23 @@ def _build_expiry_report(users: list, page: int, limit: int) -> tuple[str, int]:
 
     for user in page_users:
         name = user.full_name or user.email
-        if user.access_granted_at:
-            expiry_date = user.access_granted_at + timedelta(days=ACCESS_PERIOD_DAYS)
-            days_left = (expiry_date.date() - datetime.now().date()).days
+        expiry_date = user.access_granted_at + timedelta(days=ACCESS_PERIOD_DAYS)
+        days_left = (expiry_date.date() - datetime.now().date()).days
 
-            group_label = ""
-            if getattr(user, "group5_passed_at", None):
-                group_label = "V "
-            elif getattr(user, "group4_passed_at", None):
-                group_label = "IV "
-            elif user.group3_passed_at:
-                group_label = "III "
-            elif user.group2_passed_at:
-                group_label = "II "
+        group_label = ""
+        if getattr(user, "group5_passed_at", None):
+            group_label = "V "
+        elif getattr(user, "group4_passed_at", None):
+            group_label = "IV "
+        elif user.group3_passed_at:
+            group_label = "III "
+        elif user.group2_passed_at:
+            group_label = "II "
 
-            if days_left > 0:
-                msg += f"👤 {name} — {group_label}до {expiry_date.strftime('%d.%m.%Y')} ({days_left} дн.)\n"
-            else:
-                msg += f"👤 {name} — ❌ истёк {expiry_date.strftime('%d.%m.%Y')}\n"
+        if days_left > 0:
+            msg += f"👤 {name} — {group_label}до {expiry_date.strftime('%d.%m.%Y')} ({days_left} дн.)\n"
         else:
-            msg += f"👤 {name} — ⏳ документ не выдан\n"
+            msg += f"👤 {name} — ❌ истёк {expiry_date.strftime('%d.%m.%Y')}\n"
 
     return msg, total_pages
 
